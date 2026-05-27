@@ -587,17 +587,17 @@ footer p {
   }
 
   .mobile-menu summary {
-    display: flex;
+    display: grid;
     align-items: center;
     justify-content: center;
-    min-height: 46px;
-    padding: 0 16px;
-    color: #ffffff;
-    background: var(--accent);
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    background: #ffffff;
+    border: 1px solid var(--line);
     border-radius: 6px;
-    font-weight: 700;
     list-style: none;
-    box-shadow: 0 10px 24px rgba(7, 52, 95, 0.18);
+    box-shadow: 0 10px 24px rgba(7, 52, 95, 0.12);
     cursor: pointer;
   }
 
@@ -605,8 +605,16 @@ footer p {
     display: none;
   }
 
-  .mobile-menu[open] summary {
+  .mobile-menu summary span {
+    display: block;
+    width: 22px;
+    height: 2px;
     background: var(--navy);
+    border-radius: 999px;
+  }
+
+  .mobile-menu[open] summary {
+    border-color: #c8d5dd;
   }
 
   .mobile-menu-links {
