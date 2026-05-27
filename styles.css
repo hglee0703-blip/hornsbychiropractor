@@ -64,23 +64,39 @@ nav {
 }
 
 nav a,
+.header-book,
 .header-call,
 .button,
 .mobile-call {
   text-decoration: none;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-book,
 .header-call {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 42px;
   padding: 0 16px;
-  color: #ffffff;
-  background: var(--navy);
   border-radius: 6px;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.header-book {
+  color: #ffffff;
+  background: var(--accent);
+}
+
+.header-call {
+  color: #ffffff;
+  background: var(--navy);
 }
 
 .hero {
@@ -341,7 +357,7 @@ footer p {
     width: min(218px, 58vw);
   }
 
-  .header-call {
+  .header-actions {
     display: none;
   }
 
