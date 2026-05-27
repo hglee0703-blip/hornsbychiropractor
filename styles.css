@@ -288,6 +288,20 @@ footer {
   border: 0;
 }
 
+.map-fallback {
+  display: none;
+}
+
+.map-fallback img {
+  width: 100%;
+  background: #ffffff;
+}
+
+.map-fallback .button {
+  width: calc(100% - 28px);
+  margin: 14px;
+}
+
 .contact-card {
   align-self: center;
 }
@@ -507,9 +521,16 @@ footer p {
     max-width: 360px;
   }
 
-  .map-panel,
-  .map-panel iframe {
+  .map-panel {
     min-height: 300px;
+  }
+
+  .map-panel iframe {
+    display: none;
+  }
+
+  .map-fallback {
+    display: block;
   }
 
   .mobile-call {
