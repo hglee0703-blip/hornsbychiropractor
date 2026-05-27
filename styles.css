@@ -465,11 +465,18 @@ footer p {
 }
 
 .blog-card {
+  display: block;
   min-height: 240px;
   padding: 26px;
+  color: inherit;
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 8px;
+  text-decoration: none;
+}
+
+.blog-card:hover {
+  border-color: #b8c7d0;
 }
 
 .blog-card h2 {
@@ -478,6 +485,57 @@ footer p {
 
 .blog-card p {
   color: var(--muted);
+}
+
+.post-page {
+  background: var(--surface);
+}
+
+.post-article {
+  max-width: 1060px;
+  padding: clamp(46px, 7vw, 82px) clamp(20px, 5vw, 72px) clamp(56px, 8vw, 96px);
+}
+
+.post-back {
+  display: inline-block;
+  margin-bottom: 22px;
+  color: var(--accent-dark);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.post-article h1 {
+  font-size: clamp(2.2rem, 5vw, 4.1rem);
+}
+
+.post-article h2 {
+  margin-top: 32px;
+  font-size: clamp(1.7rem, 3vw, 2.35rem);
+}
+
+.post-article p {
+  color: var(--ink);
+}
+
+.post-article a {
+  font-weight: 700;
+}
+
+.post-image {
+  width: min(100%, 980px);
+  margin: 22px 0 28px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.post-image-narrow {
+  width: min(100%, 760px);
+}
+
+.reference-list {
+  display: grid;
+  gap: 8px;
+  padding-left: 24px;
 }
 
 .services-page {
