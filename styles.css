@@ -65,7 +65,6 @@ nav {
 
 nav a,
 .header-book,
-.header-call,
 .button,
 .mobile-call {
   text-decoration: none;
@@ -77,8 +76,7 @@ nav a,
   gap: 10px;
 }
 
-.header-book,
-.header-call {
+.header-book {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -92,11 +90,6 @@ nav a,
 .header-book {
   color: #ffffff;
   background: var(--accent);
-}
-
-.header-call {
-  color: #ffffff;
-  background: var(--navy);
 }
 
 .hero {
@@ -328,6 +321,15 @@ footer {
   margin-bottom: 4px;
   color: var(--navy);
   font-weight: 700;
+}
+
+.contact-list small {
+  display: block;
+  max-width: 360px;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
 }
 
 footer {
