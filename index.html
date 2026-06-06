@@ -9,6 +9,7 @@
       content="Evidence-informed chiropractic care in Hornsby for neck pain, lower back pain, headaches, frozen shoulder, and recovery."
     >
     <link rel="stylesheet" href="styles.css">
+    <script src="booking.js" defer></script>
   </head>
   <body>
     <header class="site-header">
@@ -23,7 +24,7 @@
         <a href="/blog/">Blog</a>
       </nav>
       <div class="header-actions">
-        <a class="header-book" href="https://hornsby-chiropractor.au4.cliniko.com/bookings">Book online</a>
+        <a class="header-book" href="#book-today">Book today</a>
       </div>
     </header>
 
@@ -35,7 +36,7 @@
         <a href="/#contact">Contact</a>
         <a href="/directions/">Directions</a>
         <a href="/blog/">Blog</a>
-        <a href="https://hornsby-chiropractor.au4.cliniko.com/bookings">Book online</a>
+        <a href="#book-today">Book today</a>
       </div>
     </details>
 
@@ -53,7 +54,7 @@
             and long-term quality of life.
           </p>
           <div class="hero-actions">
-            <a class="button" href="https://hornsby-chiropractor.au4.cliniko.com/bookings">Book online</a>
+            <a class="button" href="#book-today">See today's times</a>
           </div>
         </div>
         <div class="hero-image">
@@ -61,6 +62,85 @@
             src="assets/hero-treatment-wide.jpg"
             alt="Chiropractor providing treatment in a bright Hornsby clinic room"
           >
+        </div>
+      </section>
+
+      <section id="book-today" class="booking-section" aria-labelledby="booking-title">
+        <div class="booking-intro">
+          <p class="eyebrow">Book today</p>
+          <h2 id="booking-title">Choose an available 30-minute appointment.</h2>
+          <p>
+            Select a time and enter your details. Your appointment will be
+            confirmed directly in Cliniko.
+          </p>
+          <a
+            class="booking-fallback"
+            href="https://hornsby-chiropractor.au4.cliniko.com/bookings"
+          >
+            View other dates in Cliniko
+          </a>
+        </div>
+
+        <div class="booking-panel">
+          <div class="booking-panel-header">
+            <div>
+              <span>Today's availability</span>
+              <strong id="booking-date">Checking today's calendar...</strong>
+            </div>
+            <button id="refresh-times" class="icon-button" type="button" aria-label="Refresh available times" title="Refresh available times">
+              &#8635;
+            </button>
+          </div>
+
+          <div id="booking-status" class="booking-status" role="status" aria-live="polite">
+            Loading available appointments...
+          </div>
+          <div id="booking-times" class="booking-times" aria-label="Available appointment times"></div>
+
+          <form id="booking-form" class="booking-form" hidden>
+            <div class="selected-time">
+              <span>Selected appointment</span>
+              <strong id="selected-time-label"></strong>
+              <button id="change-time" type="button">Change</button>
+            </div>
+
+            <div class="booking-fields">
+              <label>
+                First name
+                <input name="firstName" autocomplete="given-name" maxlength="80" required>
+              </label>
+              <label>
+                Last name
+                <input name="lastName" autocomplete="family-name" maxlength="80" required>
+              </label>
+              <label>
+                Email
+                <input name="email" type="email" autocomplete="email" maxlength="160" required>
+              </label>
+              <label>
+                Mobile
+                <input name="phone" type="tel" autocomplete="tel" maxlength="30" required>
+              </label>
+            </div>
+
+            <label class="booking-consent">
+              <input name="consent" type="checkbox" required>
+              <span>I agree to my details being used to create this appointment in Cliniko.</span>
+            </label>
+            <label class="booking-honeypot" aria-hidden="true">
+              Website
+              <input name="website" tabindex="-1" autocomplete="off">
+            </label>
+
+            <button class="button booking-submit" type="submit">Confirm appointment</button>
+            <p id="booking-form-status" class="booking-form-status" role="status" aria-live="polite"></p>
+          </form>
+
+          <div id="booking-success" class="booking-success" hidden>
+            <span>Appointment confirmed</span>
+            <strong id="booking-success-time"></strong>
+            <p>A confirmation will be sent using the details in Cliniko.</p>
+          </div>
         </div>
       </section>
 
@@ -179,7 +259,7 @@
       </section>
     </main>
 
-    <a class="mobile-call" href="https://hornsby-chiropractor.au4.cliniko.com/bookings">Book online</a>
+    <a class="mobile-call" href="#book-today">Book today</a>
 
     <footer>
       <p>&copy; 2026 Hornsby Chiropractor. All rights reserved.</p>

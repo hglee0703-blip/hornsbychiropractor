@@ -1,12 +1,23 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "hornsbychiropractor",
+  "main": "worker.js",
   "compatibility_date": "2026-05-27",
   "observability": {
     "enabled": true
   },
   "assets": {
-    "directory": "."
+    "directory": ".",
+    "binding": "ASSETS",
+    "run_worker_first": [
+      "/api/*"
+    ]
+  },
+  "vars": {
+    "CLINIKO_SHARD": "au4",
+    "CLINIKO_BUSINESS_ID": "1519114000086869244",
+    "CLINIKO_PRACTITIONER_ID": "1519113997092136487",
+    "CLINIKO_APPOINTMENT_TYPE_ID": "1519113999533221463"
   },
   "compatibility_flags": [
     "nodejs_compat"

@@ -1,0 +1,13 @@
+.git
+.git/**
+.gitignore
+.wrangler
+.wrangler/**
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+.assetsignore
+worker.js
+wrangler.jsonc
+README.md
