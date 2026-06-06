@@ -990,6 +990,10 @@ footer p {
     scroll-margin-top: 0;
   }
 
+  .booking-intro {
+    display: none;
+  }
+
   .booking-panel {
     min-height: 340px;
     padding: 22px 18px;
