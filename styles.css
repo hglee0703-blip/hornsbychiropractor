@@ -235,6 +235,19 @@ h3 {
   border-radius: 8px;
 }
 
+.booking-panel.fsterbook-embed {
+  min-height: 760px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.fsterbook-embed iframe {
+  display: block;
+  width: 100%;
+  min-height: 760px;
+  border: 0;
+}
+
 .booking-panel-header {
   display: flex;
   align-items: center;
