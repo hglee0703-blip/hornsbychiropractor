@@ -9,6 +9,7 @@
       content="Evidence-informed chiropractic care in Hornsby for neck pain, lower back pain, headaches, frozen shoulder, and recovery."
     >
     <link rel="stylesheet" href="styles.css">
+    <script src="booking.js" defer></script>
   </head>
   <body>
     <header class="site-header">
@@ -23,7 +24,7 @@
         <a href="/blog/">Blog</a>
       </nav>
       <div class="header-actions">
-        <a class="header-book" href="https://fsterbook.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/hornsby/">Book Now</a>
+        <a class="header-book" href="https://hornsby-chiropractor.au4.cliniko.com/bookings">Book Now</a>
       </div>
     </header>
 
@@ -35,7 +36,7 @@
         <a href="/#contact">Contact</a>
         <a href="/directions/">Directions</a>
         <a href="/blog/">Blog</a>
-        <a href="https://fsterbook.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/hornsby/">Book Now</a>
+        <a href="https://hornsby-chiropractor.au4.cliniko.com/bookings">Book Now</a>
       </div>
     </details>
 
@@ -53,7 +54,7 @@
             and long-term quality of life.
           </p>
           <div class="hero-actions">
-            <a class="button" href="https://fsterbook.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/hornsby/">Book Now</a>
+            <a class="button" href="https://hornsby-chiropractor.au4.cliniko.com/bookings">Book Now</a>
           </div>
         </div>
         <div class="hero-image">
@@ -69,27 +70,77 @@
           <p class="eyebrow">Book today</p>
           <h2 id="booking-title">Choose an available 30-minute appointment.</h2>
           <p>
-            Select a service, choose an available time, and enter your details.
-            Your appointment will be confirmed directly in Fsterbook.
+            Select a time and enter your details. Your appointment will be
+            confirmed directly in Cliniko.
           </p>
           <a
             class="booking-fallback"
-            href="https://fsterbook.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/hornsby/"
+            href="https://hornsby-chiropractor.au4.cliniko.com/bookings"
           >
-            Open the full Fsterbook booking page
+            View other dates in Cliniko
           </a>
         </div>
 
-        <div class="booking-panel fsterbook-embed">
-          <iframe
-            id="fsterbook-hornsby"
-            src="https://fsterbook.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/hornsby/?embedded=true"
-            title="Book an appointment with Hornsby Chiropractor"
-            frameborder="0"
-            scrolling="auto"
-            width="100%"
-            height="1000"
-          ></iframe>
+        <div class="booking-panel">
+          <div class="booking-panel-header">
+            <div>
+              <span>Today's availability</span>
+              <strong id="booking-date">Checking today's calendar...</strong>
+            </div>
+            <button id="refresh-times" class="icon-button" type="button" aria-label="Refresh available times" title="Refresh available times">
+              &#8635;
+            </button>
+          </div>
+
+          <div id="booking-status" class="booking-status" role="status" aria-live="polite">
+            Loading available appointments...
+          </div>
+          <div id="booking-times" class="booking-times" aria-label="Available appointment times"></div>
+
+          <form id="booking-form" class="booking-form" hidden>
+            <div class="selected-time">
+              <span>Selected appointment</span>
+              <strong id="selected-time-label"></strong>
+              <button id="change-time" type="button">Change</button>
+            </div>
+
+            <div class="booking-fields">
+              <label>
+                First name
+                <input name="firstName" autocomplete="given-name" maxlength="80" required>
+              </label>
+              <label>
+                Last name
+                <input name="lastName" autocomplete="family-name" maxlength="80" required>
+              </label>
+              <label>
+                Email
+                <input name="email" type="email" autocomplete="email" maxlength="160" required>
+              </label>
+              <label>
+                Mobile
+                <input name="phone" type="tel" autocomplete="tel" maxlength="30" required>
+              </label>
+            </div>
+
+            <label class="booking-consent">
+              <input name="consent" type="checkbox" required>
+              <span>I agree to my details being used to create this appointment in Cliniko.</span>
+            </label>
+            <label class="booking-honeypot" aria-hidden="true">
+              Website
+              <input name="website" tabindex="-1" autocomplete="off">
+            </label>
+
+            <button class="button booking-submit" type="submit">Confirm appointment</button>
+            <p id="booking-form-status" class="booking-form-status" role="status" aria-live="polite"></p>
+          </form>
+
+          <div id="booking-success" class="booking-success" hidden>
+            <span>Appointment confirmed</span>
+            <strong id="booking-success-time"></strong>
+            <p>A confirmation will be sent using the details in Cliniko.</p>
+          </div>
         </div>
       </section>
 
@@ -208,18 +259,7 @@
       </section>
     </main>
 
-    <a class="mobile-call" href="https://fsterbook.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/hornsby/">Book Now</a>
-
-    <script>
-      window.addEventListener("message", function handleFsterbookMessage(event) {
-        const frame = document.getElementById("fsterbook-hornsby");
-        if (!frame || event.origin !== "https://fsterbook.com" || typeof event.data !== "string") return;
-        if (event.data.startsWith("fsterbook-resize:")) {
-          const height = Number(event.data.split(":")[1]);
-          if (Number.isFinite(height) && height > 0) frame.style.height = `${height}px`;
-        }
-      });
-    </script>
+    <a class="mobile-call" href="https://hornsby-chiropractor.au4.cliniko.com/bookings">Book Now</a>
 
     <footer>
       <p>&copy; 2026 Hornsby Chiropractor. All rights reserved.</p>

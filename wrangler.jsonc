@@ -8,7 +8,16 @@
   },
   "assets": {
     "directory": ".",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
+    "run_worker_first": [
+      "/api/*"
+    ]
+  },
+  "vars": {
+    "CLINIKO_SHARD": "au4",
+    "CLINIKO_BUSINESS_ID": "1519114000086869244",
+    "CLINIKO_PRACTITIONER_ID": "1519113997092136487",
+    "CLINIKO_APPOINTMENT_TYPE_ID": "1519113999533221463"
   },
   "compatibility_flags": [
     "nodejs_compat"
