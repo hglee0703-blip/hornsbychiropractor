@@ -70,7 +70,7 @@
       dateLabel.textContent = data.displayDate;
 
       if (!data.slots.length) {
-        status.innerHTML = 'There are no online appointments left today. <a href="https://hornsby-chiropractor.au4.cliniko.com/bookings">Check another date in Cliniko</a>.';
+        status.innerHTML = 'There are no online appointments left today. <a href="https://fsterbook.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Check another date in Fsterbook</a>.';
         return;
       }
 
