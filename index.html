@@ -8,8 +8,14 @@
       name="description"
       content="Evidence-informed chiropractic care in Hornsby for neck pain, lower back pain, headaches, frozen shoulder, and recovery."
     >
+    <meta name="theme-color" content="#07345f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Hornsby Chiro">
+    <link rel="manifest" href="/site.webmanifest">
+    <link rel="apple-touch-icon" href="/assets/icon-180.png">
     <link rel="stylesheet" href="styles.css">
     <script src="booking.js" defer></script>
+    <script src="install-prompt.js" defer></script>
   </head>
   <body>
     <header class="site-header">
@@ -24,7 +30,7 @@
         <a href="/blog/">Blog</a>
       </nav>
       <div class="header-actions">
-        <a class="header-book" href="https://fsterbook.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book Now</a>
+        <a class="header-book" href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book Now</a>
       </div>
     </header>
 
@@ -36,7 +42,7 @@
         <a href="/#contact">Contact</a>
         <a href="/directions/">Directions</a>
         <a href="/blog/">Blog</a>
-        <a href="https://fsterbook.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book Now</a>
+        <a href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book Now</a>
       </div>
     </details>
 
@@ -54,7 +60,7 @@
             and long-term quality of life.
           </p>
           <div class="hero-actions">
-            <a class="button" href="https://fsterbook.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book Now</a>
+            <a class="button" href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book Now</a>
           </div>
         </div>
         <div class="hero-image">
@@ -71,13 +77,13 @@
           <h2 id="booking-title">Choose an available 30-minute appointment.</h2>
           <p>
             Select a time and enter your details. Your appointment will be
-            confirmed directly in Fsterbook.
+            confirmed directly in Aseschedule.
           </p>
           <a
             class="booking-fallback"
-            href="https://fsterbook.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/"
+            href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/"
           >
-            View other dates in Fsterbook
+            View other dates
           </a>
         </div>
 
@@ -125,7 +131,7 @@
 
             <label class="booking-consent">
               <input name="consent" type="checkbox" required>
-              <span>I agree to my details being used to create this appointment in Fsterbook.</span>
+              <span>I agree to my details being used to create this appointment in Aseschedule.</span>
             </label>
             <label class="booking-honeypot" aria-hidden="true">
               Website
@@ -139,7 +145,7 @@
           <div id="booking-success" class="booking-success" hidden>
             <span>Appointment confirmed</span>
             <strong id="booking-success-time"></strong>
-            <p>A confirmation will be sent using the details in Fsterbook.</p>
+            <p>A confirmation will be sent using the details in Aseschedule.</p>
           </div>
         </div>
       </section>
@@ -259,7 +265,36 @@
       </section>
     </main>
 
-    <a class="mobile-call" href="https://fsterbook.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book Now</a>
+    <a class="mobile-call" href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book Now</a>
+
+    <div id="home-screen-prompt" class="home-screen-prompt" hidden>
+      <section
+        class="home-screen-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="home-screen-title"
+        aria-describedby="home-screen-copy"
+      >
+        <button
+          id="home-screen-close"
+          class="home-screen-close"
+          type="button"
+          aria-label="Do not show this again"
+        >
+          &times;
+        </button>
+        <img src="/assets/icon-192.png" alt="" width="54" height="54">
+        <div class="home-screen-content">
+          <h2 id="home-screen-title">Add Hornsby Chiropractor to your Home Screen?</h2>
+          <p id="home-screen-copy">Book your next appointment in just a tap.</p>
+          <ol id="home-screen-steps" class="home-screen-steps" hidden></ol>
+          <div class="home-screen-actions">
+            <button id="home-screen-add" class="button" type="button">Add to Home Screen</button>
+            <button id="home-screen-dismiss" class="home-screen-dismiss" type="button">No thanks</button>
+          </div>
+        </div>
+      </section>
+    </div>
 
     <footer>
       <p>&copy; 2026 Hornsby Chiropractor. All rights reserved.</p>

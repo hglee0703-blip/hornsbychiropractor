@@ -5,11 +5,11 @@ const JSON_HEADERS = {
 
 const SYDNEY_TIME_ZONE = "Australia/Sydney";
 const MAX_BODY_BYTES = 12_000;
-const FSTERBOOK_ORIGIN = "https://fsterbook.com";
-const FSTERBOOK_ACCOUNT_ID = "10d766b5-81f6-43b1-9a09-0b7dc8404ce2";
-const FSTERBOOK_BUSINESS_ID = "default";
-const FSTERBOOK_APPOINTMENT_TYPE_ID = "2-standard-30-minutes-appointment";
-const FSTERBOOK_PRACTITIONER = "Andy Lee";
+const ASESCHEDULE_ORIGIN = "https://aseschedule.com";
+const ASESCHEDULE_ACCOUNT_ID = "10d766b5-81f6-43b1-9a09-0b7dc8404ce2";
+const ASESCHEDULE_BUSINESS_ID = "default";
+const ASESCHEDULE_APPOINTMENT_TYPE_ID = "2-standard-30-minutes-appointment";
+const ASESCHEDULE_PRACTITIONER = "Andy Lee";
 
 export default {
   async fetch(request, env) {
@@ -90,27 +90,27 @@ async function createBooking(request) {
     }
 
     sessionToken = crypto.randomUUID();
-    const holdResult = await fsterbookRequest(fsterbookPath("/hold"), {
+    const holdResult = await asescheduleRequest(aseschedulePath("/hold"), {
       method: "POST",
       body: JSON.stringify({
         sessionToken,
-        appointmentTypeId: FSTERBOOK_APPOINTMENT_TYPE_ID,
+        appointmentTypeId: ASESCHEDULE_APPOINTMENT_TYPE_ID,
         practitioner: selectedSlot.practitioner,
         day: selectedSlot.day,
         start: selectedSlot.start,
       }),
     });
     hold = holdResult.hold;
-    if (!hold?.id) throw new FsterbookError(502, { error: "The appointment could not be held." });
+    if (!hold?.id) throw new AsescheduleError(502, { error: "The appointment could not be held." });
 
-    const result = await fsterbookRequest(fsterbookPath(), {
+    const result = await asescheduleRequest(aseschedulePath(), {
       method: "POST",
       body: JSON.stringify({
         name: `${validation.firstName} ${validation.lastName}`,
         email: validation.email,
         phone: validation.phone,
         newPatientFormSubmission: {},
-        appointmentTypeId: FSTERBOOK_APPOINTMENT_TYPE_ID,
+        appointmentTypeId: ASESCHEDULE_APPOINTMENT_TYPE_ID,
         practitioner: selectedSlot.practitioner,
         day: selectedSlot.day,
         start: selectedSlot.start,
@@ -121,7 +121,7 @@ async function createBooking(request) {
 
     const appointment = result.appointment;
     if (result.booked !== true || !appointment) {
-      throw new FsterbookError(502, { error: "The booking could not be verified." });
+      throw new AsescheduleError(502, { error: "The booking could not be verified." });
     }
 
     hold = null;
@@ -140,7 +140,7 @@ async function createBooking(request) {
     }
     console.error("Booking error", safeError(error));
 
-    if (error instanceof FsterbookError && [409, 422].includes(error.status)) {
+    if (error instanceof AsescheduleError && [409, 422].includes(error.status)) {
       return json(
         { message: "That time could not be booked. It may have just been taken; please choose another time." },
         409,
@@ -151,22 +151,22 @@ async function createBooking(request) {
     }
 
     return json(
-      { message: "The appointment could not be confirmed. Please try again or use the Fsterbook booking page." },
+      { message: "The appointment could not be confirmed. Please try again or use the Aseschedule booking page." },
       502,
     );
   }
 }
 
 async function fetchAvailableTimes(date) {
-  const data = await fsterbookRequest(fsterbookPath());
+  const data = await asescheduleRequest(aseschedulePath());
   const day = (data.days || []).find((entry) => entry.isoDate === date);
   if (!day) return [];
 
   return (day.slots || [])
     .filter(
       (slot) =>
-        slot.appointmentTypeId === FSTERBOOK_APPOINTMENT_TYPE_ID &&
-        slot.practitioner === FSTERBOOK_PRACTITIONER,
+        slot.appointmentTypeId === ASESCHEDULE_APPOINTMENT_TYPE_ID &&
+        slot.practitioner === ASESCHEDULE_PRACTITIONER,
     )
     .map((slot) => ({
       day: day.day,
@@ -177,25 +177,25 @@ async function fetchAvailableTimes(date) {
     .filter((slot) => new Date(slot.startsAt).getTime() > Date.now());
 }
 
-function fsterbookPath(suffix = "") {
-  const path = `/api/schedule/${FSTERBOOK_ACCOUNT_ID}/${FSTERBOOK_BUSINESS_ID}${suffix}`;
+function aseschedulePath(suffix = "") {
+  const path = `/api/schedule/${ASESCHEDULE_ACCOUNT_ID}/${ASESCHEDULE_BUSINESS_ID}${suffix}`;
   if (suffix) return path;
   const query = new URLSearchParams({
-    type: FSTERBOOK_APPOINTMENT_TYPE_ID,
-    practitioner: FSTERBOOK_PRACTITIONER,
+    type: ASESCHEDULE_APPOINTMENT_TYPE_ID,
+    practitioner: ASESCHEDULE_PRACTITIONER,
   });
   return `${path}?${query.toString()}`;
 }
 
 async function releaseHold(holdId, sessionToken) {
-  return fsterbookRequest(fsterbookPath("/hold"), {
+  return asescheduleRequest(aseschedulePath("/hold"), {
     method: "DELETE",
     body: JSON.stringify({ holdId, sessionToken }),
   });
 }
 
-async function fsterbookRequest(path, options = {}) {
-  const response = await fetch(`${FSTERBOOK_ORIGIN}${path}`, {
+async function asescheduleRequest(path, options = {}) {
+  const response = await fetch(`${ASESCHEDULE_ORIGIN}${path}`, {
     ...options,
     headers: {
       Accept: "application/json",
@@ -210,7 +210,7 @@ async function fsterbookRequest(path, options = {}) {
   } catch {
     data = {};
   }
-  if (!response.ok) throw new FsterbookError(response.status, data);
+  if (!response.ok) throw new AsescheduleError(response.status, data);
   return data;
 }
 
@@ -279,14 +279,14 @@ function json(body, status = 200) {
 }
 
 function safeError(error) {
-  if (error instanceof FsterbookError) return { name: error.name, status: error.status };
+  if (error instanceof AsescheduleError) return { name: error.name, status: error.status };
   return { name: error?.name || "Error", message: error?.message || "Unknown error" };
 }
 
-class FsterbookError extends Error {
+class AsescheduleError extends Error {
   constructor(status, data) {
-    super(`Fsterbook request failed with status ${status}`);
-    this.name = "FsterbookError";
+    super(`Aseschedule request failed with status ${status}`);
+    this.name = "AsescheduleError";
     this.status = status;
     this.data = data;
   }
