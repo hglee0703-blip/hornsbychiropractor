@@ -1,0 +1,79 @@
+name: Daily blog post
+
+# Runs at 09:00 Sydney time (AEST/AEDT approximated by UTC 23:00) every day.
+on:
+  schedule:
+    - cron: "0 23 * * *" # UTC 23:00 = 09:00 Sydney (AEST)
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: "Blog topic (leave empty to let AI pick a fresh topic)"
+        required: false
+        default: ""
+      force:
+        description: "Force publish even if similar topic exists"
+        required: false
+        default: "true"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-blog
+  cancel-in-progress: false
+
+env:
+  # Swap the model here (or in repo Settings > Variables) without touching code.
+  GEMINI_MODEL: gemini-3.6-flash
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Generate and publish blog post
+        id: gen
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TOPIC: ${{ github.event.inputs.topic }}
+          FORCE: ${{ github.event.inputs.force }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.6-flash' }}
+        run: python scripts/generate_blog.py
+
+      - name: Commit and push
+        env:
+          POST_TITLE: ${{ steps.gen.outputs.post_title }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit - nothing new was published."
+            exit 0
+          fi
+          TITLE_MSG=$(printf '%s' "$POST_TITLE" | tr -d '"')
+          git commit -m "blog: auto-post ${TITLE_MSG:-daily article}"
+          RETRIES=0
+          until git pull --rebase --autostash origin main && git push origin HEAD; do
+            RETRIES=$((RETRIES + 1))
+            if [ "$RETRIES" -ge 3 ]; then
+              echo "::error::git push failed after 3 attempts"
+              exit 1
+            fi
+            echo "Push conflict, retrying ($RETRIES/3)..."
+            sleep 10
+          done
