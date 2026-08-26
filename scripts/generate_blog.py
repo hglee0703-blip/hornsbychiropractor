@@ -55,8 +55,17 @@ GEMINI_URL = (
 )
 
 POLLINATIONS_STYLE_SUFFIX = (
-    ", flat illustration style, clean medical infographic, soft colors, "
-    "easy to understand, no text labels"
+    ", cute children's cartoon style, simple kawaii illustration, rounded shapes, "
+    "chibi characters, thick outlines, bright cheerful pastel colors, "
+    "flat 2D vector art, storybook drawing for kids, friendly and playful mood, "
+    "simple white background, no text, no labels, no anatomy details"
+)
+
+# Words that trigger grotesque/realistic anatomy output — steer prompts away from them.
+ANATOMY_BLOCKLIST = (
+    "spine", "spinal", "vertebra", "disc", "rib", "ribs", "skeleton", "skull",
+    "bone", "bones", "joint", "anatomy", "anatomical", "muscle", "muscles",
+    "tissue", "nerve", "nerves", "organ", "organs", "x-ray", "xray",
 )
 
 # Existing posts used for internal linking + topic dedupe.
@@ -213,8 +222,14 @@ Use only p, h2, h3, strong, em, ul, li, a tags. No h1 (the template adds it), no
     {{"question": "...", "answer": "..."}}
   ]
 }}
-Provide 2-3 image_prompts describing concrete visual scenes (people, spines, desks, beds) \
-that suit the article. The faq array must mirror the FAQ H3s in html_body."""
+Provide 2-3 image_prompts describing concrete everyday SCENES that suit the article \
+(a person sleeping with a pillow between the knees, someone sitting at a desk stretching, \
+a happy family walking in a park, a chiropractor greeting a smiling patient). \
+IMAGE STYLE RULES — CRITICAL: describe cute cartoon scenes only. NO anatomy, NO spines, \
+NO skeletons, NO bones, NO organs, NO medical diagrams, NO x-ray imagery, NO red or pink \
+body-interior details. Instead describe simple everyday objects and happy cartoon people \
+doing the activity (sleeping, sitting, stretching, walking). Keep each prompt under 40 words.
+The faq array must mirror the FAQ H3s in html_body."""
 
 
 class GeminiError(Exception):
@@ -299,8 +314,28 @@ def generate_article(topic: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def sanitize_image_prompt(prompt: str) -> str:
+    """Replace anatomy words with kid-friendly scene words so Pollinations
+    never renders grotesque medical/anatomy imagery."""
+    replacements = {
+        "spinal column": "comfortable pillow", "spine": "back", "spinal": "body",
+        "vertebra": "pillow", "disc": "cushion", "ribs": "chest", "rib": "chest",
+        "skeleton": "cartoon person", "skull": "smiling face", "bones": "body",
+        "bone": "body", "anatomical": "cartoon", "anatomy": "cartoon scene",
+        "muscles": "arms", "muscle": "arm", "nerves": "sparkles", "nerve": "sparkle",
+        "organs": "tummy", "organ": "tummy", "x-ray": "picture", "xray": "picture",
+        "tissue": "soft blanket",
+    }
+    low = prompt.lower()
+    for bad, good in replacements.items():
+        low = low.replace(bad, good)
+    # Capitalise first letter again
+    return low[0].upper() + low[1:] if low else low
+
+
 def build_image_url(prompt: str) -> str:
-    full_prompt = urllib.parse.quote(prompt.strip() + POLLINATIONS_STYLE_SUFFIX, safe="")
+    safe_prompt = sanitize_image_prompt(prompt.strip())
+    full_prompt = urllib.parse.quote(safe_prompt + POLLINATIONS_STYLE_SUFFIX, safe="")
     return (
         f"https://image.pollinations.ai/prompt/{full_prompt}"
         f"?width=1024&height=576&nologo=true"
