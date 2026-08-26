@@ -900,6 +900,31 @@ footer p {
   width: min(100%, 760px);
 }
 
+.post-figure {
+  margin: 24px 0 28px;
+}
+
+.post-figure img,
+.post-figure svg {
+  display: block;
+  width: min(100%, 980px);
+  margin: 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.post-figure figcaption {
+  margin-top: 10px;
+  font-size: 0.85rem;
+  font-style: italic;
+  color: #6a7681;
+  text-align: center;
+}
+
+.post-figure figcaption a {
+  color: inherit;
+}
+
 .reference-list {
   display: grid;
   gap: 8px;

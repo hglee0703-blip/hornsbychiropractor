@@ -5,13 +5,14 @@ Pipeline (all free tools):
   1. Pick a topic (workflow input, or Gemini suggests a fresh one that does not
      duplicate existing blog/ posts).
   2. Generate a natural-sounding, reference-backed article with Gemini.
-  3. Generate flat-illustration images with Pollinations.ai (no API key);
-     fall back to a CSS infographic card per image on failure.
+  3. Illustrate the post with hand-coded cute flat-cartoon SVG scenes
+     (scripts/svg_illustrations.py) chosen by keyword-matching the article
+     text — no external image API involved.
   4. Write blog/{slug}/index.html reusing the existing site chrome, prepend a
      card to blog/index.html, update/create sitemap.xml.
   5. Notify via Telegram (success or failure report).
 
-Only dependency: requests.
+Only dependency: requests (Gemini + Telegram only).
 
 Usage:
   python scripts/generate_blog.py            # full pipeline (needs GEMINI_API_KEY)
@@ -23,12 +24,15 @@ import json
 import os
 import re
 import sys
-import urllib.parse
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
 import requests
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import svg_illustrations
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -54,19 +58,7 @@ GEMINI_URL = (
     f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
 )
 
-POLLINATIONS_STYLE_SUFFIX = (
-    ", cute children's cartoon style, simple kawaii illustration, rounded shapes, "
-    "chibi characters, thick outlines, bright cheerful pastel colors, "
-    "flat 2D vector art, storybook drawing for kids, friendly and playful mood, "
-    "simple white background, no text, no labels, no anatomy details"
-)
-
-# Words that trigger grotesque/realistic anatomy output — steer prompts away from them.
-ANATOMY_BLOCKLIST = (
-    "spine", "spinal", "vertebra", "disc", "rib", "ribs", "skeleton", "skull",
-    "bone", "bones", "joint", "anatomy", "anatomical", "muscle", "muscles",
-    "tissue", "nerve", "nerves", "organ", "organs", "x-ray", "xray",
-)
+TIMEOUT_GEMINI = 120
 
 # Existing posts used for internal linking + topic dedupe.
 EXISTING_POSTS = {
@@ -84,9 +76,6 @@ INTERNAL_LINK_HINTS = (
     "in-depth research on disc protrusion, sciatica, cortisone injections and surgery\n"
     "If genuinely relevant, include 1-2 internal links to these URLs inside the body."
 )
-
-TIMEOUT_GEMINI = 120
-TIMEOUT_IMAGE = 90
 
 # ---------------------------------------------------------------------------
 # Small helpers
@@ -214,21 +203,10 @@ OUTPUT FORMAT — return ONLY a valid JSON object, no markdown fences, matching 
   "intro_summary": "1-2 sentence summary used on the blog listing card, max 200 characters",
   "html_body": "<p>...</p><h2>...</h2>... full article HTML including FAQ section. \
 Use only p, h2, h3, strong, em, ul, li, a tags. No h1 (the template adds it), no images.",
-  "image_prompts": [
-    "visual description of illustration 1 for this article",
-    "visual description of illustration 2"
-  ],
   "faq": [
     {{"question": "...", "answer": "..."}}
   ]
 }}
-Provide 2-3 image_prompts describing concrete everyday SCENES that suit the article \
-(a person sleeping with a pillow between the knees, someone sitting at a desk stretching, \
-a happy family walking in a park, a chiropractor greeting a smiling patient). \
-IMAGE STYLE RULES — CRITICAL: describe cute cartoon scenes only. NO anatomy, NO spines, \
-NO skeletons, NO bones, NO organs, NO medical diagrams, NO x-ray imagery, NO red or pink \
-body-interior details. Instead describe simple everyday objects and happy cartoon people \
-doing the activity (sleeping, sitting, stretching, walking). Keep each prompt under 40 words.
 The faq array must mirror the FAQ H3s in html_body."""
 
 
@@ -268,12 +246,11 @@ def parse_article_json(raw: str) -> dict:
     missing = [k for k in required if not str(obj.get(k, "")).strip()]
     if missing:
         raise ValueError(f"Article JSON missing keys: {missing}")
-    obj.setdefault("image_prompts", [])
     obj.setdefault("faq", [])
-    if not isinstance(obj["image_prompts"], list):
-        obj["image_prompts"] = []
     if not isinstance(obj["faq"], list):
         obj["faq"] = []
+    # image_prompts is no longer requested; ignore it if Gemini still returns one.
+    obj.pop("image_prompts", None)
     return obj
 
 
@@ -310,151 +287,333 @@ def generate_article(topic: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Images (Pollinations.ai, keyless)
+# Images (real paper-based: PubMed/PMC figures + academic citation cards)
 # ---------------------------------------------------------------------------
 
+NCBI_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+NCBI_PARAMS = {"tool": "hornsby-blogbot", "email": "admin@hornsbychiropractor.com"}
+HTTP_UA = {"User-Agent": "blogbot/1.0 (https://hornsbychiropractor.com; "
+                         "admin@hornsbychiropractor.com)"}
+MAX_REFERENCE_IMAGES = 3
+EUTILS_RATE_SECONDS = 0.4   # stay under the keyless 3 req/s limit
 
-def sanitize_image_prompt(prompt: str) -> str:
-    """Replace anatomy words with kid-friendly scene words so Pollinations
-    never renders grotesque medical/anatomy imagery."""
-    replacements = {
-        "spinal column": "comfortable pillow", "spine": "back", "spinal": "body",
-        "vertebra": "pillow", "disc": "cushion", "ribs": "chest", "rib": "chest",
-        "skeleton": "cartoon person", "skull": "smiling face", "bones": "body",
-        "bone": "body", "anatomical": "cartoon", "anatomy": "cartoon scene",
-        "muscles": "arms", "muscle": "arm", "nerves": "sparkles", "nerve": "sparkle",
-        "organs": "tummy", "organ": "tummy", "x-ray": "picture", "xray": "picture",
-        "tissue": "soft blanket",
-    }
-    low = prompt.lower()
-    for bad, good in replacements.items():
-        low = low.replace(bad, good)
-    # Capitalise first letter again
-    return low[0].upper() + low[1:] if low else low
+PUBMED_URL_RE = re.compile(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)")
+PMCID_URL_RE = re.compile(r"ncbi\.nlm\.nih\.gov/pmc/articles/(PMC\d+)")
+
+CC_BY_RE = re.compile(r"creativecommons\.org/licenses/(by|by-sa)(/[\d.]+)?",
+                      re.I)
 
 
-def build_image_url(prompt: str) -> str:
-    safe_prompt = sanitize_image_prompt(prompt.strip())
-    full_prompt = urllib.parse.quote(safe_prompt + POLLINATIONS_STYLE_SUFFIX, safe="")
-    return (
-        f"https://image.pollinations.ai/prompt/{full_prompt}"
-        f"?width=1024&height=576&nologo=true"
-    )
+def _http_get(url: str, binary: bool = False, timeout: int = 60):
+    resp = requests.get(url, headers=HTTP_UA, timeout=timeout)
+    resp.raise_for_status()
+    return resp.content if binary else resp.text
 
 
-def generate_images(article: dict) -> tuple[list[dict], list[str]]:
-    """Download Pollinations images. Returns (images, fallback_notes).
+def _http_get_json(url: str, timeout: int = 60) -> dict:
+    import time
 
-    Each image dict: {path(str abs), url(public /assets/... path), alt(str)}.
-    For every failed/skipped prompt a CSS infographic placeholder is recorded
-    instead so the body never has a dangling figure.
+    time.sleep(EUTILS_RATE_SECONDS)
+    return json.loads(_http_get(url, timeout=timeout))
+
+
+def extract_reference_urls(html_body: str) -> list[str]:
+    """Return up to MAX_REFERENCE_IMAGES PubMed URLs found in the body.
+
+    Order preserved, duplicates removed; PubMed links are preferred over
+    PMC-only ones (they resolve to metadata more reliably).
     """
-    images = []
-    notes = []
-    prompts = [str(p).strip() for p in article["image_prompts"] if str(p).strip()][:3]
-    ASSETS_IMG_DIR.mkdir(parents=True, exist_ok=True)
-    title = article["title"]
+    seen: set[str] = set()
+    urls: list[str] = []
+    for pattern in (PUBMED_URL_RE, PMCID_URL_RE):
+        for match in pattern.finditer(html_body):
+            url = (
+                f"https://pubmed.ncbi.nlm.nih.gov/{match.group(1)}/"
+                if pattern is PUBMED_URL_RE
+                else f"https://www.ncbi.nlm.nih.gov/pmc/articles/{match.group(1)}/"
+            )
+            if url not in seen:
+                seen.add(url)
+                urls.append(url)
+            if len(urls) >= MAX_REFERENCE_IMAGES:
+                return urls
+    return urls
 
-    for i, prompt in enumerate(prompts, start=1):
-        filename = f"{article['slug']}-{i}.png"
-        dest = ASSETS_IMG_DIR / filename
-        public_path = f"/assets/blog-images/{filename}"
-        alt = f"{title} — illustration {i}"
-        ok = False
-        if DRY_RUN:
-            notes.append(f"dry-run: skipped download for image {i}")
-        else:
-            url = build_image_url(prompt)
-            try:
-                resp = requests.get(url, timeout=TIMEOUT_IMAGE)
-                ctype = resp.headers.get("Content-Type", "")
-                if (
-                    resp.status_code == 200
-                    and ctype.startswith("image/")
-                    and len(resp.content) > 5000
-                ):
-                    dest.write_bytes(resp.content)
-                    ok = True
-                    log(f"Image {i} saved: {filename} ({len(resp.content)} bytes)")
-                else:
-                    notes.append(
-                        f"image {i}: pollinations HTTP {resp.status_code} type={ctype}"
-                    )
-            except Exception as exc:  # noqa: BLE001
-                notes.append(f"image {i}: {type(exc).__name__}: {exc}")
-        images.append(
-            {
-                "ok": ok,
-                "local_path": str(dest),
-                "public_path": public_path,
-                "alt": alt,
-                "prompt": prompt,
-            }
+
+def _resolve_ids(ref_url: str) -> dict:
+    """Resolve a pubmed/PMC URL to {'pmid': ..., 'pmcid': ...}.
+
+    PubMed URLs resolve via esummary db=pubmed (which also returns the
+    PMCID). For PMC-only URLs the PMCID is parsed directly from the URL
+    and the PMID is recovered via esummary db=pmc when possible.
+    """
+    ids: dict = {}
+    pmid_m = PUBMED_URL_RE.search(ref_url)
+    pmcid_m = PMCID_URL_RE.search(ref_url)
+    try:
+        if pmid_m:
+            meta = _fetch_metadata(pmid_m.group(1))
+            if meta.get("title"):
+                ids["pmid"] = pmid_m.group(1)
+                if meta.get("pmcid"):
+                    ids["pmcid"] = meta["pmcid"]
+        elif pmcid_m:
+            ids["pmcid"] = pmcid_m.group(1)
+            uid_digits = ids["pmcid"].replace("PMC", "")
+            data = _http_get_json(
+                f"{NCBI_BASE}/esummary.fcgi?db=pmc&id={uid_digits}"
+                "&retmode=json&"
+                + "&".join(f"{k}={v}" for k, v in NCBI_PARAMS.items())
+            )
+            rec = (data.get("result") or {}).get(uid_digits) or {}
+            for aid in rec.get("articleids") or []:
+                if aid.get("idtype") == "pmid" and aid.get("value"):
+                    ids["pmid"] = str(aid["value"])
+                    break
+    except Exception as exc:  # noqa: BLE001
+        log(f"ID resolution failed for {ref_url}: {type(exc).__name__}: {exc}")
+    return ids
+
+
+def _fetch_metadata(pmid: str) -> dict:
+    """Title/authors/journal/year/doi/pmcid via esummary db=pubmed.
+
+    (The idconv API is blocked from this host with HTTP 403, but the
+    esummary record carries the same PMID→PMCID mapping.)
+    """
+    meta: dict = {}
+    if not pmid:
+        return meta
+    try:
+        data = _http_get_json(
+            f"{NCBI_BASE}/esummary.fcgi?db=pubmed&id={pmid}&retmode=json&"
+            + "&".join(f"{k}={v}" for k, v in NCBI_PARAMS.items())
         )
+        rec = (data.get("result") or {}).get(str(pmid)) or {}
+        meta["title"] = rec.get("title", "").rstrip(".")
+        authors = [a["name"] for a in (rec.get("authors") or [])]
+        shown = ", ".join(authors[:6])
+        if len(authors) > 6:
+            shown += " et al."
+        meta["authors"] = shown
+        meta["journal"] = rec.get("fulljournalname") or rec.get("source", "")
+        meta["year"] = (rec.get("pubdate") or "")[:4]
+        for aid in rec.get("articleids") or []:
+            value = aid.get("value", "")
+            if aid.get("idtype") == "pmc" and value.startswith("PMC"):
+                meta["pmcid"] = value
+            elif aid.get("idtype") == "pmcid" and "pmcid" not in meta:
+                import re as _re
+
+                match = _re.search(r"PMC\d+", value)
+                if match:
+                    meta["pmcid"] = match.group(0)
+            elif aid.get("idtype") == "doi" and value:
+                meta["doi"] = value
+    except Exception as exc:  # noqa: BLE001
+        log(f"esummary failed for PMID {pmid}: {type(exc).__name__}: {exc}")
+    return meta
+
+
+def _first_pmc_figure(pmc_uid: str) -> dict | None:
+    """First CC-BY-licensed figure from a PMC article, downloaded as jpg.
+
+    Returns {'local_path', 'label', 'caption', 'license'} or None.
+    """
+    uid_digits = pmc_uid.replace("PMC", "")
+    try:
+        xml_text = _http_get(
+            f"{NCBI_BASE}/efetch.fcgi?db=pmc&id={uid_digits}&retmode=xml&"
+            + "&".join(f"{k}={v}" for k, v in NCBI_PARAMS.items())
+        )
+    except Exception as exc:  # noqa: BLE001
+        log(f"efetch db=pmc failed for {pmc_uid}: {type(exc).__name__}: {exc}")
+        return None
+
+    lic_match = CC_BY_RE.search(xml_text)
+    if not lic_match:
+        log(f"{pmc_uid}: no CC-BY license in PMC XML - skipping figure.")
+        return None
+    license_label = f"CC BY{lic_match.group(2) or ''}"
+
+    fig_match = re.search(r'<fig\b[^>]*>(.*?)</fig>', xml_text, flags=re.DOTALL)
+    if not fig_match:
+        log(f"{pmc_uid}: no <fig> element in PMC XML.")
+        return None
+    fig_xml = fig_match.group(1)
+
+    graphic_match = re.search(r'<graphic[^>]*xlink:href="([^"]+)"', fig_xml)
+    label_match = re.search(r"<label>(.*?)</label>", fig_xml, flags=re.DOTALL)
+    caption_match = re.search(r"<caption>(.*?)</caption>", fig_xml,
+                              flags=re.DOTALL)
+    clean = lambda s: html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", s))).strip()  # noqa: E731
+
+    graphic_name = (graphic_match.group(1) if graphic_match else "").strip()
+    label = clean(label_match.group(1)) if label_match else ""
+    caption = clean(caption_match.group(1))[:220] if caption_match else ""
+    if not graphic_name:
+        log(f"{pmc_uid}: first figure has no graphic file - skipped.")
+        return None
+
+    # Download via the live PMC article page (cdn blob URL).
+    image_bytes = None
+    try:
+        page = _http_get(f"https://pmc.ncbi.nlm.nih.gov/articles/{pmc_uid}/")
+        img_srcs = re.findall(r'<img[^>]+src="([^"]+)"', page)
+        stem = graphic_name.rsplit(".", 1)[0]
+        candidates = [s for s in img_srcs if stem in s]
+        for src in candidates:
+            url = src if src.startswith("http") else f"https://pmc.ncbi.nlm.nih.gov{src}"
+            try:
+                image_bytes = _http_get(url, binary=True)
+                break
+            except Exception:  # noqa: BLE001
+                continue
+    except Exception as exc:  # noqa: BLE001
+        log(f"{pmc_uid}: PMC page scrape failed: {type(exc).__name__}: {exc}")
+
+    if not image_bytes or not image_bytes[:3] == b"\xff\xd8\xff":
+        log(f"{pmc_uid}: could not download figure jpg - skipped.")
+        return None
+    return {
+        "image_bytes": image_bytes,
+        "label": label,
+        "caption": caption,
+        "license": license_label,
+    }
+
+
+def build_reference_images(article: dict) -> tuple[list[dict], list[str]]:
+    """Build real paper-based images for the article's references.
+
+    For each PubMed/PMC reference (up to MAX_REFERENCE_IMAGES):
+      * always an academic paper-card SVG;
+      * plus the first CC-BY figure from PMC Open Access when available.
+
+    Returns (images, notes). Each image dict:
+      {ok, kind('figure'|'card'), public_path, alt, caption_source,
+       citation, license, ref_url}
+    """
+    notes: list[str] = []
+    slug = article["slug"]
+    ASSETS_IMG_DIR.mkdir(parents=True, exist_ok=True)
+    images: list[dict] = []
+
+    ref_urls = extract_reference_urls(article["html_body"])
+    if not ref_urls:
+        log("No PubMed references found in body - no reference images.")
+        return images, notes
+
+    for n, ref_url in enumerate(ref_urls, start=1):
+        ids = _resolve_ids(ref_url)
+        pmid = ids.get("pmid", "")
+        meta = _fetch_metadata(pmid)
+        title = meta.get("title") or "PubMed publication"
+        authors_short = meta.get("authors", "Unknown authors")
+        # Short author form for captions/cards: "Desouzart G et al."
+        first_author = authors_short.split(",")[0].strip() if authors_short else ""
+        year = meta.get("year", "")
+        journal = meta.get("journal", "")
+        doi = meta.get("doi", "")
+        citation = f'{first_author} et al. ({year}). "{title}". {journal}'.strip()
+
+        # ---- figure (only for PMC Open Access with CC-BY license) --------
+        pmc_uid = ids.get("pmcid")
+        figure = _first_pmc_figure(pmc_uid) if pmc_uid else None
+
+        if figure:
+            filename = f"{slug}-ref{n}.jpg"
+            dest = ASSETS_IMG_DIR / filename
+            try:
+                dest.write_bytes(figure["image_bytes"])
+                ok = True
+                log(f"Reference {n}: figure saved {filename} ({pmc_uid}, "
+                    f"{figure['license']})")
+            except Exception as exc:  # noqa: BLE001
+                ok = False
+                notes.append(f"reference {n} figure write failed: {exc}")
+            if ok:
+                images.append({
+                    "ok": True,
+                    "kind": "figure",
+                    "public_path": f"/assets/blog-images/{filename}",
+                    "alt": figure["caption"] or f"{title} — figure",
+                    "citation": citation,
+                    "license": figure["license"],
+                    "ref_url": ref_url,
+                    "n": n,
+                })
+
+        # ---- paper card SVG (one per reference) --------------------------
+        card_filename = f"{slug}-paper-card-{n}.svg"
+        card_dest = ASSETS_IMG_DIR / card_filename
+        open_access = bool(pmc_uid)
+        try:
+            svg_illustrations.add_paper_card_svg(
+                title=title, authors=authors_short, journal=journal,
+                year=year, doi=doi, out_path=str(card_dest),
+                open_access=open_access,
+            )
+            card_ok = True
+        except Exception as exc:  # noqa: BLE001
+            card_ok = False
+            notes.append(f"reference {n} card failed: "
+                         f"{type(exc).__name__}: {exc}")
+        if card_ok:
+            images.append({
+                "ok": True,
+                "kind": "card",
+                "public_path": f"/assets/blog-images/{card_filename}",
+                "alt": f'Paper: "{title}" ({first_author} et al., {year})',
+                "citation": citation,
+                "license": "Open Access" if open_access else "Publisher",
+                "ref_url": ref_url,
+                "n": n,
+            })
+            log(f"Reference {n}: paper card saved {card_filename}")
+
     return images, notes
 
 
-CSS_INFOGRAPHIC_CSS = """
-<style>
-.ai-infographic{display:flex;gap:14px;flex-wrap:wrap;margin:24px 0;padding:18px;
-background:#f4f7fb;border-radius:12px;border:1px solid #dfe7f0;}
-.ai-infographic .card{flex:1 1 160px;background:#fff;border-radius:10px;padding:14px;
-box-shadow:0 1px 3px rgba(20,40,70,.08);text-align:center;}
-.ai-infographic .icon{font-size:28px;line-height:1;margin-bottom:8px;}
-.ai-infographic .label{font-weight:600;font-size:.95rem;color:#1c3a5b;}
-.ai-infographic .sub{font-size:.85rem;color:#51667d;margin-top:4px;}
-</style>
-"""
-
-
-def css_infographic(article: dict, index: int) -> str:
-    """Simple icon+text CSS card replacing a failed image."""
-    presets = [
-        [("🧍", "Posture matters", "Small daily habits shape spinal load"),
-         ("💡", "Know the cause", "Understanding beats guessing"),
-         ("🚶", "Keep moving", "Gradual activity supports recovery")],
-        [("🛏️", "Rest smart", "Supportive positions ease night pain"),
-         ("⏱️", "Be consistent", "Short regular efforts add up"),
-         ("📞", "Get assessed", "Persistent pain deserves a check-up")],
-        [("🪑", "Set up your desk", "Screen at eye level, elbows supported"),
-         ("🔄", "Break hourly", "Stand and move every hour"),
-         ("✅", "Track progress", "Note what eases or aggravates")],
-    ]
-    cards = "".join(
-        f'<div class="card"><div class="icon">{icon}</div>'
-        f'<div class="label">{html.escape(label)}</div>'
-        f'<div class="sub">{html.escape(sub)}</div></div>'
-        for icon, label, sub in presets[index % len(presets)]
+def _reference_figure_html(img: dict) -> str:
+    """Build the <figure class="post-figure"> block for one reference image."""
+    caption = (
+        f'Source: {img["citation"]}. '
+        f'<a href="{img["ref_url"]}">{html.escape(img["license"])}</a>'
     )
     return (
-        '<figure class="post-image-wrap">' + CSS_INFOGRAPHIC_CSS
-        + f'<div class="ai-infographic">{cards}</div></figure>'
+        '<figure class="post-figure">\n'
+        f'          <img src="{img["public_path"]}" '
+        f'alt="{html.escape(img["alt"])}" loading="lazy">\n'
+        f'          <figcaption>Source: {html.escape(img["citation"])}. '
+        f'<a href="{img["ref_url"]}">{html.escape(img["license"])}</a>'
+        "</figcaption>\n"
+        "        </figure>"
     )
 
 
 def insert_images_into_body(body: str, images: list[dict], title: str) -> str:
-    """Place generated images after key sections; failed ones become CSS cards."""
-    if not images:
+    """Insert reference images near the front and middle of the article."""
+    usable = [im for im in images if im.get("ok")]
+    if not usable:
         return body
+    # Anchor points: after the first paragraph (front) and after a mid-article
+    # h2 heading; extra images just append in order at whatever anchors exist.
+    anchors: list[str] = []
     paragraphs = re.findall(r"<p>.*?</p>", body, flags=re.DOTALL)
-    anchors = []
-    if len(paragraphs) >= 3:
-        anchors.append(paragraphs[1])   # after intro-ish paragraph
+    if paragraphs:
+        anchors.append(paragraphs[0])
     h2s = re.findall(r"<h2>.*?</h2>", body, flags=re.DOTALL)
-    if h2s:
-        anchors.append(h2s[min(1, len(h2s) - 1)])
+    if len(h2s) >= 2:
+        anchors.append(h2s[1])
+    elif h2s:
+        anchors.append(h2s[0])
     fig_index = 0
-    for img in images:
+    for img in usable:
         if fig_index >= len(anchors):
             break
         anchor = anchors[fig_index]
-        if img["ok"]:
-            figure = (
-                f'<img class="post-image" src="{img["public_path"]}" '
-                f'alt="{html.escape(img["alt"])}" loading="lazy">'
-            )
-        else:
-            figure = css_infographic({"title": title}, fig_index)
+        figure = _reference_figure_html(img)
         body = body.replace(anchor, anchor + "\n        " + figure, 1)
         fig_index += 1
     return body
@@ -767,12 +926,14 @@ def run_pipeline() -> tuple[str, str]:
     wc = word_count(article["html_body"])
     log(f"Article ready: '{article['title']}' (~{wc} words, slug={slug})")
 
-    log("Generating images with Pollinations...")
-    images, img_notes = generate_images(article)
+    log("Building paper-based reference images (PubMed/PMC)...")
+    images, img_notes = build_reference_images(article)
     for note in img_notes:
         log(note)
     ok_count = sum(1 for i in images if i["ok"])
-    log(f"Images: {ok_count}/{len(images)} downloaded (rest fall back to CSS infographics).")
+    fig_count = sum(1 for i in images if i["ok"] and i.get("kind") == "figure")
+    card_count = sum(1 for i in images if i["ok"] and i.get("kind") == "card")
+    log(f"Images: {fig_count} PMC figures + {card_count} paper cards.")
 
     chrome = extract_chrome(BLOG_DIR / "lumbar-disc-injury-management" / "index.html")
     post_path = write_post_page(article, images, chrome)
@@ -813,15 +974,24 @@ def dry_run() -> int:
             "<h2>Second Section Heading</h2><p>Section two body text.</p>"
             "<h3>What is a dry run?</h3><p>An answer explaining dry runs.</p>"
         ),
-        "image_prompts": ["person sleeping comfortably", "ergonomic desk setup"],
         "faq": [{"question": "What is a dry run?", "answer": "A test without side effects."}],
     }
     images = [
-        {"ok": True, "local_path": str(ASSETS_IMG_DIR / "dry-run-test-post-1.png"),
-         "public_path": "/assets/blog-images/dry-run-test-post-1.png",
-         "alt": "Dry Run Test Post Title — illustration 1"},
-        {"ok": False, "local_path": "", "public_path": "",
-         "alt": "Dry Run Test Post Title — illustration 2"},
+        {"ok": True, "kind": "figure",
+         "public_path": "/assets/blog-images/dry-run-test-post-ref1.jpg",
+         "alt": "Sample figure caption from a PMC open access article",
+         "citation": 'Desouzart G et al. (2016). "Effects of sleeping position '
+                     'on back pain in physically active seniors". Work',
+         "license": "CC BY 4.0",
+         "ref_url": "https://pubmed.ncbi.nlm.nih.gov/26835867/", "n": 1},
+        {"ok": True, "kind": "card",
+         "public_path": "/assets/blog-images/dry-run-test-post-paper-card-1.svg",
+         "alt": 'Paper: "Effects of sleeping position on back pain" '
+                '(Desouzart G et al., 2016)',
+         "citation": 'Desouzart G et al. (2016). "Effects of sleeping position '
+                     'on back pain in physically active seniors". Work',
+         "license": "Open Access",
+         "ref_url": "https://pubmed.ncbi.nlm.nih.gov/26835867/", "n": 1},
     ]
     chrome = extract_chrome(BLOG_DIR / "lumbar-disc-injury-management" / "index.html")
     assert chrome.strip(), "Chrome extraction produced empty output"
@@ -842,8 +1012,10 @@ def dry_run() -> int:
                 "site header copied": 'class="site-header"' in text,
                 "mobile menu copied": 'class="mobile-menu"' in text,
                 "footer present": "<footer>" in text,
-                "image tag inserted": 'class="post-image"' in text,
-                "css infographic fallback": "ai-infographic" in text,
+                "post-figure structure": '<figure class="post-figure">' in text,
+                "figcaption present": "<figcaption>" in text,
+                "source caption present": "Source: " in text,
+                "reference image inserted": "/assets/blog-images/dry-run-test-post-" in text,
                 "disclaimer": "general information only" in text,
             }
             for name, passed in checks.items():
