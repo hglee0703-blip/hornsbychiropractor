@@ -634,6 +634,7 @@ PAGE_TEMPLATE = """<!doctype html>
       content="{meta_description}"
     >
     <link rel="canonical" href="{canonical}">
+    <link rel="icon" href="/assets/icon-192.png" sizes="192x192" type="image/png">
     <meta property="og:type" content="article">
     <meta property="og:title" content="{og_title}">
     <meta property="og:description" content="{meta_description}">
@@ -730,14 +731,11 @@ def clamp_meta(text: str, limit: int, pad_to: int | None = None) -> str:
 def ensure_title_len(title: str, max_len: int = 60) -> str:
     title = re.sub(r"\s+", " ", title).strip()
     suffix = " | Hornsby Chiropractor"
-    base_max = max_len
-    plain = title
-    if len(title) + len(suffix) <= base_max + len(suffix):
-        pass
-    if len(plain) > base_max - len(suffix) and plain.endswith(suffix):
-        plain = plain[: -len(suffix)].rstrip()
-    if len(plain) > base_max - len(suffix):
-        cut = plain[: base_max - len(suffix)]
+    plain = re.sub(r"\s*\|\s*(?:Hornsby Chiropractor|Hornsby Chiro)\s*$", "", title, flags=re.IGNORECASE)
+    plain = plain.rstrip(" |-")
+    base_max = max_len - len(suffix)
+    if len(plain) > base_max:
+        cut = plain[:base_max]
         plain = (cut.rsplit(" ", 1)[0] if " " in cut else cut).rstrip()
     return plain + suffix
 
@@ -959,6 +957,12 @@ def run_pipeline() -> tuple[str, str]:
 def dry_run() -> int:
     """Assemble everything with fake data — no network calls."""
     log("DRY RUN: assembling templates with sample data (no network calls).")
+    assert ensure_title_len("Hip Flexor Guide | Hornsby Chiro") == (
+        "Hip Flexor Guide | Hornsby Chiropractor"
+    )
+    assert ensure_title_len("Hip Flexor Guide | Hornsby Chiropractor").count(
+        "Hornsby Chiropractor"
+    ) == 1
     article = {
         "slug": "dry-run-test-post",
         "title": "Dry Run Test Post Title",
@@ -1006,6 +1010,7 @@ def dry_run() -> int:
         if path == post_path:
             checks = {
                 "canonical": 'rel="canonical"' in text,
+                "favicon": 'rel="icon"' in text,
                 "og tags": 'property="og:title"' in text,
                 "BlogPosting JSON-LD": '"@type": "BlogPosting"' in text,
                 "FAQPage JSON-LD": '"@type": "FAQPage"' in text,

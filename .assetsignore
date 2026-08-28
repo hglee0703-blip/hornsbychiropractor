@@ -3,6 +3,10 @@
 .gitignore
 .wrangler
 .wrangler/**
+.github
+.github/**
+scripts
+scripts/**
 .dev.vars
 .dev.vars.*
 .env
