@@ -1,9 +1,9 @@
 name: Daily blog post
 
-# Runs at 09:00 Sydney time (AEST/AEDT approximated by UTC 23:00) every day.
+# Runs at 12:30 Sydney time (AEST UTC+10) every day.
 on:
   schedule:
-    - cron: "0 23 * * *" # UTC 23:00 = 09:00 Sydney (AEST)
+    - cron: "30 2 * * *" # UTC 02:30 = Sydney 12:30 AEST
   workflow_dispatch:
     inputs:
       topic:
