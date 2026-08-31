@@ -517,8 +517,98 @@ def build_reference_images(article: dict) -> tuple[list[dict], list[str]]:
 
     ref_urls = extract_reference_urls(article["html_body"])
     if not ref_urls:
-        log("No PubMed references found in body - no reference images.")
-        return images, notes
+        log("No PubMed references found in body - attempting PMC fallback search for CC-BY figures.")
+        try:
+            # Build a small keyword query from the title + intro_summary (or slug)
+            text = f"{article.get('title','')} {article.get('intro_summary') or article.get('slug','')}"
+            tokens = re.findall(r"\w+", text.lower())
+            stopwords = {
+                'the','and','for','with','from','that','this','these','those','have','has','had',
+                'are','is','in','on','at','a','an','to','of','by','as','it','be','or','not','but',
+                'we','our','you','your','i','me','my','s','per'
+            }
+            seen = set()
+            keywords = []
+            for t in tokens:
+                if len(t) < 3 or t in stopwords:
+                    continue
+                if t not in seen:
+                    seen.add(t)
+                    keywords.append(t)
+                if len(keywords) >= 6:
+                    break
+            if len(keywords) < 3:
+                keywords = [t for t in tokens if len(t) >= 3][:3]
+            chosen = keywords[:min(6, max(3, len(keywords)))]
+            query = " ".join(chosen)
+            term = quote(query)
+            esearch_url = (
+                f"{NCBI_BASE}/esearch.fcgi?db=pmc&term={term}&retmax=5&retmode=json&"
+                + "&".join(f"{k}={v}" for k, v in NCBI_PARAMS.items())
+            )
+            data = _http_get_json(esearch_url)
+            idlist = (data.get("esearchresult") or {}).get("idlist") or []
+            for uid in idlist:
+                pmc_uid = f"PMC{uid}" if not str(uid).upper().startswith("PMC") else str(uid)
+                try:
+                    fig = _first_pmc_figure(pmc_uid)
+                except Exception as exc:  # noqa: BLE001
+                    log(f"PMC figure fetch failed for {pmc_uid}: {type(exc).__name__}: {exc}")
+                    fig = None
+                if fig:
+                    filename = f"{slug}-pmc-{uid}.jpg"
+                    dest = ASSETS_IMG_DIR / filename
+                    try:
+                        dest.write_bytes(fig["image_bytes"])
+                        log(f"PMC fallback: saved figure {filename} ({pmc_uid})")
+                    except Exception as exc:  # noqa: BLE001
+                        notes.append(f"PMC figure write failed for {pmc_uid}: {exc}")
+                        continue
+                    images.append({
+                        "ok": True,
+                        "kind": "figure",
+                        "public_path": f"/assets/blog-images/{filename}",
+                        "alt": fig.get("caption") or f"Figure from {pmc_uid}",
+                        "citation": f"PMC {pmc_uid}",
+                        "license": fig.get("license"),
+                        "ref_url": f"https://www.ncbi.nlm.nih.gov/pmc/articles/{pmc_uid}/",
+                        "n": 1,
+                    })
+                    # Create a paper card SVG alongside the figure (best-effort).
+                    card_filename = f"{slug}-paper-card-pmc-{uid}.svg"
+                    card_dest = ASSETS_IMG_DIR / card_filename
+                    try:
+                        svg_illustrations.add_paper_card_svg(
+                            title=f"PMC Article {pmc_uid}",
+                            authors="",
+                            journal="",
+                            year="",
+                            doi="",
+                            out_path=str(card_dest),
+                            open_access=True,
+                        )
+                        images.append({
+                            "ok": True,
+                            "kind": "card",
+                            "public_path": f"/assets/blog-images/{card_filename}",
+                            "alt": f"Paper: PMC {pmc_uid}",
+                            "citation": f"PMC {pmc_uid}",
+                            "license": "Open Access",
+                            "ref_url": f"https://www.ncbi.nlm.nih.gov/pmc/articles/{pmc_uid}/",
+                            "n": 1,
+                        })
+                    except Exception as exc:  # noqa: BLE001
+                        notes.append(f"paper card creation failed for {pmc_uid}: {exc}")
+                    break
+            if not images:
+                log("PMC fallback search completed but no CC-BY figures were found.")
+            # If a fallback image was found we return early matching the original
+            # behaviour of producing reference images only when available.
+            if images:
+                return images, notes
+        except Exception as exc:  # noqa: BLE001
+            log(f"PMC fallback search failed: {type(exc).__name__}: {exc}")
+            return images, notes
 
     # Extract article topic/keywords for relevance filtering
     article_keywords = _extract_article_keywords(article)
