@@ -1,9 +1,7 @@
 name: Daily blog post
 
-# Runs at 12:30 Sydney time (AEST UTC+10) every day.
+# Triggered by the Cloudflare Worker scheduler at 12:30 Sydney time.
 on:
-  schedule:
-    - cron: "30 2 * * *" # UTC 02:30 = Sydney 12:30 AEST
   workflow_dispatch:
     inputs:
       topic:
@@ -14,6 +12,10 @@ on:
         description: "Force publish even if similar topic exists"
         required: false
         default: "true"
+      scheduled_date:
+        description: "Sydney scheduled slot date (YYYY-MM-DD; scheduler use only)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -33,17 +35,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
+      - name: Check scheduled publication slot
+        id: slot
+        env:
+          SCHEDULED_DATE: ${{ github.event.inputs.scheduled_date }}
+        run: node scripts/daily-blog-slot.mjs check "$SCHEDULED_DATE"
+
       - name: Set up Python 3.12
+        if: steps.slot.outputs.should_publish == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install dependencies
+        if: steps.slot.outputs.should_publish == 'true'
         run: pip install requests
 
       - name: Generate and publish blog post
+        if: steps.slot.outputs.should_publish == 'true'
         id: gen
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -54,7 +66,14 @@ jobs:
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.6-flash' }}
         run: python scripts/generate_blog.py
 
+      - name: Record scheduled publication slot
+        if: steps.slot.outputs.scheduled == 'true' && steps.slot.outputs.should_publish == 'true'
+        env:
+          SCHEDULED_DATE: ${{ github.event.inputs.scheduled_date }}
+        run: node scripts/daily-blog-slot.mjs record "$SCHEDULED_DATE"
+
       - name: Commit and push
+        if: steps.slot.outputs.should_publish == 'true'
         env:
           POST_TITLE: ${{ steps.gen.outputs.post_title }}
         run: |
