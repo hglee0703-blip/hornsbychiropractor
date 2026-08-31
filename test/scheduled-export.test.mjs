@@ -1,8 +1,7 @@
 import worker from '../worker.js';
 
-// Ensure the module's default export includes a scheduled handler so
-// that Cloudflare cron triggers will invoke it after deployment.
-if (!worker || !worker.default || typeof worker.default.scheduled !== 'function') {
+const candidate = (worker && worker.default) ? worker.default : worker;
+if (!candidate || typeof candidate.scheduled !== 'function') {
   throw new Error('Missing scheduled handler on worker default export (required by Cloudflare).');
 }
 
