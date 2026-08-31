@@ -520,11 +520,20 @@ def build_reference_images(article: dict) -> tuple[list[dict], list[str]]:
         log("No PubMed references found in body - no reference images.")
         return images, notes
 
+    # Extract article topic/keywords for relevance filtering
+    article_keywords = _extract_article_keywords(article)
+
     for n, ref_url in enumerate(ref_urls, start=1):
         ids = _resolve_ids(ref_url)
         pmid = ids.get("pmid", "")
         meta = _fetch_metadata(pmid)
         title = meta.get("title") or "PubMed publication"
+        
+        # Check relevance before processing
+        if not _is_reference_relevant(title, meta.get("abstract", ""), article_keywords):
+            log(f"Reference {n} skipped - not relevant to article topic: {title[:80]}")
+            continue
+            
         authors_short = meta.get("authors", "Unknown authors")
         # Short author form for captions/cards: "Desouzart G et al."
         first_author = authors_short.split(",")[0].strip() if authors_short else ""
@@ -749,11 +758,14 @@ def ensure_title_len(title: str, max_len: int = 60) -> str:
     suffix = " | Hornsby Chiropractor"
     plain = re.sub(r"\s*\|\s*(?:Hornsby Chiropractor|Hornsby Chiro)\s*$", "", title, flags=re.IGNORECASE)
     plain = plain.rstrip(" |-")
-    base_max = max_len - len(suffix)
-    if len(plain) > base_max:
-        cut = plain[:base_max]
+    # Use full 60 chars for title, only add suffix if there's room
+    if len(plain) + len(suffix) + 1 <= max_len:
+        return plain + suffix
+    # If title + suffix exceeds max_len, truncate title to fit
+    if len(plain) > max_len:
+        cut = plain[:max_len]
         plain = (cut.rsplit(" ", 1)[0] if " " in cut else cut).rstrip()
-    return plain + suffix
+    return plain
 
 
 def build_blogposting_jsonld(article: dict, canonical: str, date_pub: str, og_image: str) -> str:
@@ -1067,6 +1079,52 @@ def dry_run() -> int:
 
 _LISTING_BACKUP = None
 _SITEMAP_BACKUP = None
+
+
+def _extract_article_keywords(article: dict) -> set[str]:
+    """Extract medical/condition keywords from article for relevance filtering."""
+    text = f"{article.get('title', '')} {article.get('category', '')} {article.get('html_body', '')}"
+    text = text.lower()
+    
+    # Medical/condition keywords relevant to chiropractic content
+    keywords = {
+        # Conditions
+        'sciatica', 'back pain', 'lower back', 'lumbar', 'disc', 'herniated', 'protrusion',
+        'neck pain', 'cervical', 'whiplash', 'headache', 'migraine',
+        'scoliosis', 'posture', 'ergonomic', 'nerve', 'radiculopathy',
+        'piriformis', 'spinal', 'vertebra', 'facet', 'spondylolisthesis',
+        'stenosis', 'arthritis', 'degenerative', 'bulging', 'slipped disc',
+        # Anatomy
+        'spine', 'spinal cord', 'nerve root', 'sacroiliac', 'pelvis',
+        'hip', 'leg pain', 'foot', 'numbness', 'tingling',
+        # Treatments
+        'adjustment', 'manipulation', 'mobilization', 'therapy', 'exercise',
+        'stretch', 'rehabilitation', 'chiropractic', 'physical therapy',
+        'decompression', 'traction', 'massage', 'acupuncture',
+        # Activities
+        'driving', 'sitting', 'commuting', 'desk', 'office', 'sleep', 'lifting',
+        'running', 'sport', 'injury', 'accident', 'trauma',
+    }
+    
+    found = set()
+    for kw in keywords:
+        if kw in text:
+            found.add(kw)
+    return found
+
+
+def _is_reference_relevant(ref_title: str, ref_abstract: str, article_keywords: set[str]) -> bool:
+    """Check if a reference is relevant to the article topic."""
+    if not article_keywords:
+        return True  # If no keywords extracted, allow all
+    
+    ref_text = f"{ref_title} {ref_abstract}".lower()
+    
+    # Check if any article keyword appears in reference
+    matches = sum(1 for kw in article_keywords if kw in ref_text)
+    
+    # Require at least 1 keyword match for relevance
+    return matches >= 1
 
 
 def _snapshot_before_dry_run() -> None:
