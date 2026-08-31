@@ -4,6 +4,11 @@ const JSON_HEADERS = {
 };
 
 const SYDNEY_TIME_ZONE = "Australia/Sydney";
+const BLOG_DISPATCH_URL =
+  "https://api.github.com/repos/hglee0703-blip/hornsbychiropractor/actions/workflows/daily-blog.yml/dispatches";
+const BLOG_DISPATCH_USER_AGENT = "hornsbychiropractor-cloudflare-worker";
+const BLOG_DISPATCH_MAX_ATTEMPTS = 3;
+const BLOG_DISPATCH_BACKOFF_MS = [1_000, 2_000];
 const MAX_BODY_BYTES = 12_000;
 const ASESCHEDULE_ORIGIN = "https://aseschedule.com";
 const ASESCHEDULE_ACCOUNT_ID = "10d766b5-81f6-43b1-9a09-0b7dc8404ce2";
@@ -29,7 +34,89 @@ export default {
 
     return env.ASSETS.fetch(request);
   },
+
+  scheduled(event, env, ctx, dependencies) {
+    const slot = sydneyBlogDispatchSlot(event.scheduledTime);
+    if (!slot.eligible) return;
+    ctx.waitUntil(dispatchBlogWorkflow(env, slot.date, dependencies));
+  },
 };
+
+function sydneyBlogDispatchSlot(scheduledTime) {
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: SYDNEY_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(scheduledTime));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return {
+    date: `${values.year}-${values.month}-${values.day}`,
+    eligible: values.hour === "12" && values.minute === "30",
+  };
+}
+
+async function dispatchBlogWorkflow(env, scheduledDate, dependencies = {}) {
+  const token = env.GITHUB_TOKEN;
+  if (!token) throw new Error("GITHUB_TOKEN is required to dispatch the daily blog workflow");
+
+  const fetchImpl = dependencies.fetch || globalThis.fetch;
+  const sleep = dependencies.sleep || sleepWithTimer;
+  const request = {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "Content-Type": "application/json",
+      "User-Agent": BLOG_DISPATCH_USER_AGENT,
+    },
+    body: JSON.stringify({
+      ref: "main",
+      inputs: { force: "true", scheduled_date: scheduledDate },
+    }),
+  };
+
+  for (let attempt = 1; attempt <= BLOG_DISPATCH_MAX_ATTEMPTS; attempt += 1) {
+    let response;
+    try {
+      response = await fetchImpl(BLOG_DISPATCH_URL, request);
+    } catch {
+      if (attempt === BLOG_DISPATCH_MAX_ATTEMPTS) {
+        throw new Error(`GitHub workflow dispatch failed after ${attempt} network attempts`);
+      }
+      await sleep(BLOG_DISPATCH_BACKOFF_MS[attempt - 1]);
+      continue;
+    }
+
+    if (response.status === 204) return;
+
+    await discardResponseBody(response);
+    const retryable = response.status === 429 || (response.status >= 500 && response.status <= 599);
+    if (!retryable || attempt === BLOG_DISPATCH_MAX_ATTEMPTS) {
+      const attempts = attempt === 1 ? "attempt" : "attempts";
+      throw new Error(
+        `GitHub workflow dispatch failed with status ${response.status} after ${attempt} ${attempts}`,
+      );
+    }
+    await sleep(BLOG_DISPATCH_BACKOFF_MS[attempt - 1]);
+  }
+}
+
+async function discardResponseBody(response) {
+  try {
+    await response.body?.cancel?.();
+  } catch {
+    // Discard failures must not expose or replace the safe dispatch error.
+  }
+}
+
+function sleepWithTimer(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
 
 async function getAvailability() {
   try {
