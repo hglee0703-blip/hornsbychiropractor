@@ -48,9 +48,12 @@ DNS from Bluehost to Cloudflare.
 | `GBP_LOCATION_ID` | `accounts/{accountId}/locations/{locationId}` (Full resource name) |
 | `GBP_ACCOUNT_ID` | 계정 ID (선택 — GBP_LOCATION_ID가 full resource name이면 불필요) |
 
+3. 모든 OAuth Secret을 등록한 뒤 Actions의 **Variables** 탭에 `GBP_ENABLED=true`를
+   추가하면 성공한 블로그 발행 뒤 GBP 자동 게시가 활성화됩니다.
+
 > 💡 `TELEGRAM_BOT_TOKEN`과 `TELEGRAM_CHAT_ID`는 기존 블로그 워크플로에서 이미 설정되어 있습니다.
 
-3. GitHub → **Actions** 탭에서 **GBP auto-post** 워크플로우를 수동 실행하면:
+4. GitHub → **Actions** 탭에서 **GBP auto-post** 워크플로우를 수동 실행하면:
    - 블로그 글이 없으면 최신 블로그 글 제목+요약+링크로 자동 포스트 생성
    - `gbp-posts.json`에 결과 기록 (자동 커밋됨)
    - 실패 시 Telegram으로 알림

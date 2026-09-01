@@ -34,7 +34,9 @@ concurrency:
 
 jobs:
   post:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # Automatic GBP posting stays off until OAuth secrets are configured and
+    # the repository variable GBP_ENABLED is explicitly set to "true".
+    if: github.event_name == 'workflow_dispatch' || (vars.GBP_ENABLED == 'true' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
