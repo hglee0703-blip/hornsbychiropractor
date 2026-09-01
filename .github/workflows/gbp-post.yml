@@ -1,10 +1,11 @@
 name: GBP auto-post
 
-# Runs at 09:15 Sydney time (AEST/AEDT approximated by UTC 23:15) every day.
-# Slightly after the daily-blog cron (UTC 23:00) so the latest blog exists.
+# Run only after the blog workflow actually succeeds. This avoids GitHub cron delays
+# causing GBP to publish before the day's article exists.
 on:
-  schedule:
-    - cron: "15 23 * * *"  # UTC 23:15 = 09:15 Sydney (AEST)
+  workflow_run:
+    workflows: ["Daily blog post"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       post_text:
@@ -31,11 +32,9 @@ concurrency:
   group: gbp-post
   cancel-in-progress: false
 
-env:
-  GEMINI_MODEL: gemini-3.6-flash
-
 jobs:
   post:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -49,7 +48,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install -r scripts/requirements.txt
 
       - name: Create GBP local post
         id: gbp
@@ -71,7 +70,11 @@ jobs:
 
       - name: Read result
         id: result
+        if: always()
         run: |
+          if [ ! -f gbp-result.json ]; then
+            echo '{"success":false,"error":"MissingResult","message":"gbp-result.json was not created"}' > gbp-result.json
+          fi
           cat gbp-result.json
           echo "result<<EOF" >> $GITHUB_OUTPUT
           cat gbp-result.json >> $GITHUB_OUTPUT
@@ -128,12 +131,12 @@ jobs:
           ERROR_MSG=$(echo "$RESULT_JSON" | jq -r '.error // "Unknown error"')
           MESSAGE=$(echo "$RESULT_JSON" | jq -r '.message // "GBP post failed"')
           TEXT="❌ <b>GBP Auto-post Failed</b>
-Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-Error: $ERROR_MSG
-Detail: $MESSAGE
-Repo: hornsbychiropractor
-Workflow: GBP auto-post
-Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          Error: $ERROR_MSG
+          Detail: $MESSAGE
+          Repo: hornsbychiropractor
+          Workflow: GBP auto-post
+          Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
             -d parse_mode="HTML" \

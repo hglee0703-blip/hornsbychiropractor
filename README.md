@@ -15,18 +15,18 @@ DNS from Bluehost to Cloudflare.
 ## Automation
 
 ### Daily Blog Post
-매일 시드니 시간 오전 9시(UTC 23:00)에 GitHub Actions가 Gemini로 블로그 글을 쓰고,
-hornsbychiropractor.com에 자동 발행합니다.
+매일 시드니 시간 오후 12시 30분(UTC 02:30)에 GitHub Actions가 OpenAI로 자연스러운
+블로그 글과 손그림 2D 애니메이션풍 삽화 2장을 만들어 자동 발행합니다.
 
 - **`.github/workflows/daily-blog.yml`** — 매일 cron 실행 + 수동 실행용 `workflow_dispatch`
 - **`scripts/generate_blog.py`** — 전체 파이프라인 (주제 선정 → 글 생성 → 이미지 → 발행 → 텔레그램 알림)
-  의존성: `requests` 하나
+  의존성은 `scripts/requirements.txt`에서 관리
 
 [블로그 자동화 상세 안내](scripts/README.md)
 
 ### Google Business Profile Auto-Post
-매일 시드니 시간 오전 9시 15분(UTC 23:15)에 블로그 글을 발간한 직후,
-Google Business Profile에 자동으로 지역 게시물(local post)을 등록합니다.
+블로그 자동 발행 작업이 실제로 성공한 직후 Google Business Profile에 자동으로
+지역 게시물(local post)을 등록합니다. GitHub 예약 실행이 늦어져도 실행 순서가 바뀌지 않습니다.
 
 - **`.github/workflows/gbp-post.yml`** — 매일 cron 실행 + 수동 실행용 `workflow_dispatch`
 - **`scripts/generate_gbp_post.py`** — OAuth2 refresh → GBP API v4 `localPosts.create` 호출

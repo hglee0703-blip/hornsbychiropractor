@@ -23,8 +23,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # Swap the model here (or in repo Settings > Variables) without touching code.
-  GEMINI_MODEL: gemini-3.6-flash
+  # Override these in repo Settings > Variables without changing the workflow.
+  OPENAI_MODEL: gpt-5.6
+  OPENAI_IMAGE_MODEL: gpt-image-2
 
 jobs:
   publish:
@@ -41,17 +42,20 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install -r scripts/requirements.txt
 
       - name: Generate and publish blog post
         id: gen
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TOPIC: ${{ github.event.inputs.topic }}
           FORCE: ${{ github.event.inputs.force }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.6-flash' }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6' }}
+          OPENAI_IMAGE_MODEL: ${{ vars.OPENAI_IMAGE_MODEL || 'gpt-image-2' }}
+          OPENAI_IMAGE_SIZE: ${{ vars.OPENAI_IMAGE_SIZE || '1536x1024' }}
+          OPENAI_IMAGE_QUALITY: ${{ vars.OPENAI_IMAGE_QUALITY || 'medium' }}
         run: python scripts/generate_blog.py
 
       - name: Commit and push

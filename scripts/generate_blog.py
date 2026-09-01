@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 """Daily auto SEO blog poster for hornsbychiropractor.com.
 
-Pipeline (all free tools):
-  1. Pick a topic (workflow input, or Gemini suggests a fresh one that does not
+Pipeline:
+  1. Pick a topic (workflow input, or OpenAI suggests a fresh one that does not
      duplicate existing blog/ posts).
-  2. Generate a natural-sounding, reference-backed article with Gemini.
-  3. Illustrate the post with hand-coded cute flat-cartoon SVG scenes
-     (scripts/svg_illustrations.py) chosen by keyword-matching the article
-     text — no external image API involved.
+  2. Generate and quality-check a natural, reference-backed article with OpenAI.
+  3. Generate two restrained hand-drawn 2D editorial illustrations with the
+     OpenAI Image API and store them with the post assets.
   4. Write blog/{slug}/index.html reusing the existing site chrome, prepend a
      card to blog/index.html, update/create sitemap.xml.
   5. Notify via Telegram (success or failure report).
 
-Only dependency: requests (Gemini + Telegram only).
+Only dependency: requests.
 
 Usage:
-  python scripts/generate_blog.py            # full pipeline (needs GEMINI_API_KEY)
+  python scripts/generate_blog.py            # full pipeline (needs OPENAI_API_KEY)
   python scripts/generate_blog.py --dry-run  # no network; tests template assembly
 """
 
+import base64
 import html
 import json
 import os
@@ -42,8 +42,11 @@ BLOG_DIR = REPO_ROOT / "blog"
 ASSETS_IMG_DIR = REPO_ROOT / "assets" / "blog-images"
 SITE_DOMAIN = "https://hornsbychiropractor.com"
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6")
+OPENAI_IMAGE_MODEL = os.environ.get("OPENAI_IMAGE_MODEL", "gpt-image-2")
+OPENAI_IMAGE_SIZE = os.environ.get("OPENAI_IMAGE_SIZE", "1536x1024")
+OPENAI_IMAGE_QUALITY = os.environ.get("OPENAI_IMAGE_QUALITY", "medium")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 TOPIC_INPUT = os.environ.get("TOPIC", "").strip()
@@ -53,12 +56,10 @@ DRY_RUN = "--dry-run" in sys.argv
 
 SYDNEY_TZ = ZoneInfo("Australia/Sydney")
 
-GEMINI_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-)
-
-TIMEOUT_GEMINI = 120
+OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
+OPENAI_IMAGES_URL = "https://api.openai.com/v1/images/generations"
+TIMEOUT_OPENAI_TEXT = 240
+TIMEOUT_OPENAI_IMAGE = 300
 
 # Existing posts used for internal linking + topic dedupe.
 EXISTING_POSTS = {
@@ -145,7 +146,7 @@ def send_telegram(message: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Gemini calls
+# OpenAI calls
 # ---------------------------------------------------------------------------
 
 TOPIC_SYSTEM_PROMPT = """You are the content strategist for Hornsby Chiropractor, \
@@ -166,13 +167,18 @@ TOPIC: {topic}
 Today's date: {today}.
 
 WRITING STYLE — CRITICAL, this must read like a real clinician wrote it, not an AI:
-- Vary sentence length. Use occasional very short sentences ("It works." / "Most people get this wrong.").
-- First-person clinical voice where appropriate: "In my clinic...", "Most patients tell me...", \
-"I usually suggest...".
+- Write for one ordinary patient, not for an algorithm. Prefer plain, specific language over polish.
+- Vary sentence and paragraph length naturally. A short sentence is fine when it earns its place.
+- Use first-person clinical voice sparingly and only for general professional observations. Never invent a
+specific patient, quotation, result, case history, or claim about what patients supposedly told you.
 - Natural transitions, sometimes none at all. Do NOT start consecutive paragraphs the same way.
 - BANNED AI-isms: do not use "Moreover", "Furthermore", "In addition", "In conclusion", \
 "It's important to note", "delve", "landscape", "tapestry", "game-changer", "navigate the world of". \
-Do not use em-dash pairs constantly. Do not write perfectly balanced triads everywhere.
+Also avoid "you are not alone", "let's break it down", "the good news is", "when it comes to", and
+"understanding X is the first step". Do not use em dashes. Do not write perfectly balanced triads everywhere.
+- Do not open with a generic definition, a rhetorical question, or an exaggerated empathy hook. Start with a
+concrete situation the reader recognises. Do not finish with a tidy recap of every section.
+- Avoid sales language and certainty. Sound calm, useful and a little conversational, not chirpy.
 - Australian English spelling (e.g. "practise" as verb, "programme" only if truly needed, \
 "favourite", "realise").
 
@@ -205,48 +211,76 @@ OUTPUT FORMAT — return ONLY a valid JSON object, no markdown fences, matching 
 Use only p, h2, h3, strong, em, ul, li, a tags. No h1 (the template adds it), no images.",
   "faq": [
     {{"question": "...", "answer": "..."}}
+  ],
+  "image_prompts": [
+    "specific everyday scene for the opening illustration, describing people, setting, action and composition",
+    "different practical scene for the middle illustration, describing people, setting, action and composition"
   ]
 }}
-The faq array must mirror the FAQ H3s in html_body."""
+The faq array must mirror the FAQ H3s in html_body. The two image prompts must be visually distinct,
+medically sensible everyday scenes. Do not request text, labels, logos, x-rays or exposed anatomy in them.
+Before returning JSON, silently edit out stock AI phrasing, repetition, overclaiming and invented anecdotes."""
 
 
-class GeminiError(Exception):
+class OpenAIError(Exception):
     pass
 
 
-def gemini_generate(prompt: str, max_output_tokens: int = 8192) -> str:
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 1.0,
-            "maxOutputTokens": max_output_tokens,
-            "responseMimeType": "application/json" if '"slug"' in prompt else "text/plain",
-        },
+def _openai_headers() -> dict[str, str]:
+    if not OPENAI_API_KEY:
+        raise OpenAIError("OPENAI_API_KEY is not set")
+    return {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json",
     }
-    
-    # Exponential backoff for transient errors (503, 429, 500, 502, 504)
+
+
+def _response_text(data: dict) -> str:
+    """Collect output_text parts without assuming a fixed output-array position."""
+    chunks: list[str] = []
+    for item in data.get("output", []):
+        if item.get("type") != "message":
+            continue
+        for part in item.get("content", []):
+            if part.get("type") == "output_text" and part.get("text"):
+                chunks.append(part["text"])
+    if not chunks:
+        raise OpenAIError(f"OpenAI returned no usable text: {json.dumps(data)[:500]}")
+    return "\n".join(chunks)
+
+
+def openai_generate(prompt: str, max_output_tokens: int = 8192) -> str:
+    payload = {
+        "model": OPENAI_MODEL,
+        "instructions": (
+            "Follow the requested output format exactly. Be medically cautious, "
+            "write in natural Australian English, and never fabricate personal experience."
+        ),
+        "input": prompt,
+        "max_output_tokens": max_output_tokens,
+    }
+
     max_attempts = 5
-    base_delay = 2  # seconds
+    base_delay = 2
     for attempt in range(1, max_attempts + 1):
-        resp = requests.post(GEMINI_URL, json=payload, timeout=TIMEOUT_GEMINI)
+        resp = requests.post(
+            OPENAI_RESPONSES_URL,
+            headers=_openai_headers(),
+            json=payload,
+            timeout=TIMEOUT_OPENAI_TEXT,
+        )
         if resp.status_code == 200:
-            data = resp.json()
-            try:
-                return data["candidates"][0]["content"]["parts"][0]["text"]
-            except (KeyError, IndexError) as exc:
-                raise GeminiError(f"Gemini returned no usable candidate: {json.dumps(data)[:400]}") from exc
-        
-        # Check if it's a retryable error
+            return _response_text(resp.json())
+
         if resp.status_code in (429, 500, 502, 503, 504):
             if attempt < max_attempts:
-                delay = base_delay * (2 ** (attempt - 1))  # 2, 4, 8, 16 seconds
-                log(f"Gemini HTTP {resp.status_code} (attempt {attempt}/{max_attempts}), retrying in {delay}s...")
+                delay = base_delay * (2 ** (attempt - 1))
+                log(f"OpenAI HTTP {resp.status_code} (attempt {attempt}/{max_attempts}), "
+                    f"retrying in {delay}s...")
                 import time
                 time.sleep(delay)
                 continue
-        
-        # Non-retryable error or max attempts reached
-        raise GeminiError(f"Gemini HTTP {resp.status_code}: {resp.text[:400]}")
+        raise OpenAIError(f"OpenAI HTTP {resp.status_code}: {resp.text[:500]}")
 
 
 def parse_article_json(raw: str) -> dict:
@@ -265,9 +299,36 @@ def parse_article_json(raw: str) -> dict:
     obj.setdefault("faq", [])
     if not isinstance(obj["faq"], list):
         obj["faq"] = []
-    # image_prompts is no longer requested; ignore it if Gemini still returns one.
-    obj.pop("image_prompts", None)
+    prompts = obj.get("image_prompts") or []
+    if not isinstance(prompts, list):
+        prompts = []
+    prompts = [str(p).strip() for p in prompts if str(p).strip()][:2]
+    while len(prompts) < 2:
+        prompts.append(
+            f"An everyday Australian adult dealing with {obj['title']} in a calm, "
+            "realistic home or work setting"
+        )
+    obj["image_prompts"] = prompts
     return obj
+
+
+def article_style_issues(article: dict) -> list[str]:
+    """Catch obvious machine-like copy before it reaches the site."""
+    visible = strip_html(article["html_body"])
+    lower = visible.lower()
+    banned = (
+        "moreover", "furthermore", "in conclusion", "it's important to note",
+        "it is important to note", "delve", "tapestry", "game-changer",
+        "navigate the world of", "you are not alone", "you're not alone",
+        "let's break it down", "the good news is", "when it comes to",
+    )
+    issues = [f"banned phrase: {phrase}" for phrase in banned if phrase in lower]
+    wc = word_count(article["html_body"])
+    if wc < 850 or wc > 1500:
+        issues.append(f"visible word count {wc} is outside 850-1500")
+    if visible.count("—"):
+        issues.append("contains em dash")
+    return issues
 
 
 def pick_topic(existing_slugs: list[str]) -> tuple[str, bool]:
@@ -276,11 +337,11 @@ def pick_topic(existing_slugs: list[str]) -> tuple[str, bool]:
         return TOPIC_INPUT, False
     existing_list = "\n".join(f"- {s}" for s in existing_slugs) or "- (none yet)"
     prompt = TOPIC_SYSTEM_PROMPT + "\n\nAlready published topics:\n" + existing_list
-    raw = gemini_generate(prompt, max_output_tokens=256).strip().strip('"').strip()
+    raw = openai_generate(prompt, max_output_tokens=256).strip().strip('"').strip()
     if len(raw.split()) > 15:  # sanity check
         raw = " ".join(raw.split()[:12])
     if not raw:
-        raise GeminiError("Gemini returned empty topic suggestion")
+        raise OpenAIError("OpenAI returned empty topic suggestion")
     return raw, True
 
 
@@ -294,16 +355,104 @@ def generate_article(topic: str) -> dict:
     last_err = None
     for attempt in range(1, 4):
         try:
-            raw = gemini_generate(prompt)
-            return parse_article_json(raw)
-        except (ValueError, KeyError, json.JSONDecodeError, GeminiError) as exc:
+            raw = openai_generate(prompt)
+            article = parse_article_json(raw)
+            issues = article_style_issues(article)
+            if issues:
+                raise ValueError("style check failed: " + "; ".join(issues))
+            return article
+        except (ValueError, KeyError, json.JSONDecodeError, OpenAIError) as exc:
             last_err = exc
             log(f"Article generation attempt {attempt}/3 failed: {exc}")
-    raise GeminiError(f"Gemini article generation failed after 3 attempts: {last_err}")
+    raise OpenAIError(f"OpenAI article generation failed after 3 attempts: {last_err}")
 
 
 # ---------------------------------------------------------------------------
-# Images (real paper-based: PubMed/PMC figures + academic citation cards)
+# Images (OpenAI-generated hand-drawn 2D editorial illustrations)
+# ---------------------------------------------------------------------------
+
+IMAGE_STYLE_PROMPT = """Create a warm hand-drawn 2D editorial animation still for an
+Australian chiropractic clinic's patient-education article. Use clean ink outlines,
+simple cel shading, a restrained earthy palette, subtle paper grain and slight natural
+asymmetry. It should feel commissioned by a human illustrator, not glossy, synthetic or
+overproduced. Show believable adult proportions, hands, posture, furniture and everyday
+Australian surroundings. Keep the mood calm and practical, never dramatic or frightening.
+No words, captions, labels, logos, watermarks, UI elements, floating symbols, cutaway
+anatomy, glowing pain effects, x-rays, surreal objects, photorealism, 3D-rendered style,
+plastic skin, hyper-detail or excessive gradients.
+
+Scene to illustrate: {scene}
+"""
+
+
+def _generate_image_bytes(scene: str) -> bytes:
+    payload = {
+        "model": OPENAI_IMAGE_MODEL,
+        "prompt": IMAGE_STYLE_PROMPT.format(scene=scene),
+        "size": OPENAI_IMAGE_SIZE,
+        "quality": OPENAI_IMAGE_QUALITY,
+    }
+    max_attempts = 4
+    for attempt in range(1, max_attempts + 1):
+        resp = requests.post(
+            OPENAI_IMAGES_URL,
+            headers=_openai_headers(),
+            json=payload,
+            timeout=TIMEOUT_OPENAI_IMAGE,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            try:
+                return base64.b64decode(data["data"][0]["b64_json"], validate=True)
+            except (KeyError, IndexError, ValueError) as exc:
+                raise OpenAIError(
+                    f"OpenAI image response had no decodable image: {json.dumps(data)[:500]}"
+                ) from exc
+        if resp.status_code in (429, 500, 502, 503, 504) and attempt < max_attempts:
+            delay = 3 * (2 ** (attempt - 1))
+            log(f"OpenAI image HTTP {resp.status_code} (attempt {attempt}/{max_attempts}), "
+                f"retrying in {delay}s...")
+            import time
+            time.sleep(delay)
+            continue
+        raise OpenAIError(f"OpenAI image HTTP {resp.status_code}: {resp.text[:500]}")
+    raise OpenAIError("OpenAI image generation exhausted all retries")
+
+
+def build_generated_images(article: dict) -> tuple[list[dict], list[str]]:
+    """Generate two original PNG illustrations and return page-ready metadata."""
+    ASSETS_IMG_DIR.mkdir(parents=True, exist_ok=True)
+    images: list[dict] = []
+    notes: list[str] = []
+    prompts = article.get("image_prompts") or []
+
+    for n, scene in enumerate(prompts[:2], start=1):
+        filename = f"{article['slug']}-illustration-{n}.png"
+        destination = ASSETS_IMG_DIR / filename
+        try:
+            image_bytes = _generate_image_bytes(str(scene))
+            if len(image_bytes) < 10_000:
+                raise OpenAIError(f"Generated image was unexpectedly small ({len(image_bytes)} bytes)")
+            destination.write_bytes(image_bytes)
+            images.append({
+                "ok": True,
+                "kind": "generated",
+                "public_path": f"/assets/blog-images/{filename}",
+                "alt": f"Hand-drawn illustration for {article['title']}",
+                "caption": "Original editorial illustration for Hornsby Chiropractor.",
+                "n": n,
+            })
+            log(f"Generated illustration {n}: {filename}")
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"illustration {n} failed: {type(exc).__name__}: {exc}")
+
+    if not images:
+        raise OpenAIError("No blog illustrations could be generated: " + "; ".join(notes))
+    return images, notes
+
+
+# ---------------------------------------------------------------------------
+# Legacy reference-image helpers (kept for existing posts and dry-run compatibility)
 # ---------------------------------------------------------------------------
 
 NCBI_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
@@ -601,24 +750,25 @@ def build_reference_images(article: dict) -> tuple[list[dict], list[str]]:
 
 
 def _reference_figure_html(img: dict) -> str:
-    """Build the <figure class="post-figure"> block for one reference image."""
-    caption = (
-        f'Source: {img["citation"]}. '
-        f'<a href="{img["ref_url"]}">{html.escape(img["license"])}</a>'
-    )
+    """Build a post figure for a generated illustration or reference image."""
+    if img.get("kind") == "generated":
+        figcaption = html.escape(img.get("caption", "Original editorial illustration."))
+    else:
+        figcaption = (
+            f'Source: {html.escape(img["citation"])}. '
+            f'<a href="{img["ref_url"]}">{html.escape(img["license"])}</a>'
+        )
     return (
         '<figure class="post-figure">\n'
         f'          <img src="{img["public_path"]}" '
         f'alt="{html.escape(img["alt"])}" loading="lazy">\n'
-        f'          <figcaption>Source: {html.escape(img["citation"])}. '
-        f'<a href="{img["ref_url"]}">{html.escape(img["license"])}</a>'
-        "</figcaption>\n"
+        f'          <figcaption>{figcaption}</figcaption>\n'
         "        </figure>"
     )
 
 
 def insert_images_into_body(body: str, images: list[dict], title: str) -> str:
-    """Insert reference images near the front and middle of the article."""
+    """Insert illustrations near the front and middle of the article."""
     usable = [im for im in images if im.get("ok")]
     if not usable:
         return body
@@ -935,7 +1085,7 @@ def run_pipeline() -> tuple[str, str]:
     topic, from_ai = pick_topic(existing)
     log(f'Topic{" (AI)" if from_ai else " (manual)"}: {topic}')
 
-    log(f"Generating article with {GEMINI_MODEL}...")
+    log(f"Generating article with {OPENAI_MODEL}...")
     article = generate_article(topic)
 
     # Deduplicate slug against existing folders.
@@ -952,14 +1102,12 @@ def run_pipeline() -> tuple[str, str]:
     wc = word_count(article["html_body"])
     log(f"Article ready: '{article['title']}' (~{wc} words, slug={slug})")
 
-    log("Building paper-based reference images (PubMed/PMC)...")
-    images, img_notes = build_reference_images(article)
+    log(f"Generating hand-drawn editorial illustrations with {OPENAI_IMAGE_MODEL}...")
+    images, img_notes = build_generated_images(article)
     for note in img_notes:
         log(note)
     ok_count = sum(1 for i in images if i["ok"])
-    fig_count = sum(1 for i in images if i["ok"] and i.get("kind") == "figure")
-    card_count = sum(1 for i in images if i["ok"] and i.get("kind") == "card")
-    log(f"Images: {fig_count} PMC figures + {card_count} paper cards.")
+    log(f"Images: {ok_count}/{len(article['image_prompts'][:2])} generated illustrations.")
 
     chrome = extract_chrome(BLOG_DIR / "lumbar-disc-injury-management" / "index.html")
     post_path = write_post_page(article, images, chrome)
@@ -977,7 +1125,7 @@ def run_pipeline() -> tuple[str, str]:
         f"🔗 {url}\n"
         f"🗂 Category: {html.escape(article['category'])}\n"
         f"📝 ~{wc} words · 🖼 {ok_count}/{len(images)} images\n"
-        f"🤖 model: {GEMINI_MODEL}"
+        f"🤖 models: {OPENAI_MODEL} + {OPENAI_IMAGE_MODEL}"
     )
     return url, article["title"]
 
@@ -1009,21 +1157,14 @@ def dry_run() -> int:
         "faq": [{"question": "What is a dry run?", "answer": "A test without side effects."}],
     }
     images = [
-        {"ok": True, "kind": "figure",
-         "public_path": "/assets/blog-images/dry-run-test-post-ref1.jpg",
-         "alt": "Sample figure caption from a PMC open access article",
-         "citation": 'Desouzart G et al. (2016). "Effects of sleeping position '
-                     'on back pain in physically active seniors". Work',
-         "license": "CC BY 4.0",
-         "ref_url": "https://pubmed.ncbi.nlm.nih.gov/26835867/", "n": 1},
-        {"ok": True, "kind": "card",
-         "public_path": "/assets/blog-images/dry-run-test-post-paper-card-1.svg",
-         "alt": 'Paper: "Effects of sleeping position on back pain" '
-                '(Desouzart G et al., 2016)',
-         "citation": 'Desouzart G et al. (2016). "Effects of sleeping position '
-                     'on back pain in physically active seniors". Work',
-         "license": "Open Access",
-         "ref_url": "https://pubmed.ncbi.nlm.nih.gov/26835867/", "n": 1},
+        {"ok": True, "kind": "generated",
+         "public_path": "/assets/blog-images/dry-run-test-post-illustration-1.png",
+         "alt": "Hand-drawn sample illustration",
+         "caption": "Original editorial illustration for Hornsby Chiropractor.", "n": 1},
+        {"ok": True, "kind": "generated",
+         "public_path": "/assets/blog-images/dry-run-test-post-illustration-2.png",
+         "alt": "Second hand-drawn sample illustration",
+         "caption": "Original editorial illustration for Hornsby Chiropractor.", "n": 2},
     ]
     chrome = extract_chrome(BLOG_DIR / "lumbar-disc-injury-management" / "index.html")
     assert chrome.strip(), "Chrome extraction produced empty output"
@@ -1047,8 +1188,8 @@ def dry_run() -> int:
                 "footer present": "<footer>" in text,
                 "post-figure structure": '<figure class="post-figure">' in text,
                 "figcaption present": "<figcaption>" in text,
-                "source caption present": "Source: " in text,
-                "reference image inserted": "/assets/blog-images/dry-run-test-post-" in text,
+                "illustration caption present": "Original editorial illustration" in text,
+                "generated image inserted": "/assets/blog-images/dry-run-test-post-illustration-" in text,
                 "disclaimer": "general information only" in text,
             }
             for name, passed in checks.items():
@@ -1073,7 +1214,7 @@ def dry_run() -> int:
     shutil.rmtree(BLOG_DIR / article["slug"], ignore_errors=True)
     _restore_listing(listing_path)
     _restore_sitemap(sitemap_path)
-    log("DRY RUN PASSED — artifacts cleaned up.")
+    log("DRY RUN PASSED - artifacts cleaned up.")
     return 0
 
 
@@ -1157,7 +1298,13 @@ def main() -> int:
         finally:
             pass
     try:
-        run_pipeline()
+        published_url, post_title = run_pipeline()
+        github_output = os.environ.get("GITHUB_OUTPUT", "")
+        if github_output:
+            clean_title = re.sub(r"[\r\n]+", " ", post_title).strip()
+            with Path(github_output).open("a", encoding="utf-8") as output_file:
+                output_file.write(f"post_title={clean_title}\n")
+                output_file.write(f"published_url={published_url}\n")
         return 0
     except Exception as exc:  # noqa: BLE001
         err = f"{type(exc).__name__}: {exc}"
