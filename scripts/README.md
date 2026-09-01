@@ -31,7 +31,7 @@
 
 | Secret 이름 | 값 |
 |---|---|
-| `OPENAI_API_KEY` | OpenAI Platform에서 발급한 API 키 |
+| `HORNSBYCHIROPRACTORBLOGPOSTANDIMAGE` | OpenAI Platform에서 발급한 API 키 |
 | `TELEGRAM_BOT_TOKEN` | BotFather에게 받은 봇 토큰 |
 | `TELEGRAM_CHAT_ID` | 알림을 받을 채팅 ID |
 
