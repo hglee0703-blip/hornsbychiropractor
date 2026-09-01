@@ -1,0 +1,14 @@
+[{
+  "success": false,
+  "timestamp": "2026-09-01T03:10:53Z",
+  "post_name": null,
+  "search_url": null,
+  "url": "",
+  "language_code": "en-AU",
+  "topic_type": "STANDARD",
+  "summary": null,
+  "call_to_action": null,
+  "media_url": null,
+  "message": "Missing required environment variables: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GBP_REFRESH_TOKEN, GBP_LOCATION_ID",
+  "error": "GbpError"
+}]
