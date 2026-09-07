@@ -1,0 +1,13 @@
+# Replaced WordPress archive routes.
+/free-health-info/ /blog/ 301
+/free-health-info/page/2/ /blog/ 301
+/free-health-info/page/3/ /blog/ 301
+/author/hglee0703/ /blog/ 301
+
+# Legacy pages with a direct equivalent on the current site.
+/elementor-884/ /directions/ 301
+/services/headaches-treatment-hornsby/ /services/#headaches 301
+/acute-adhesive-capsulitis-of-the-shoulder/ /services/#frozen-shoulder 301
+/case-review-frozen-shoulder/ /services/#frozen-shoulder 301
+/services/frozen-shoulder-treatment-hornsby/ /services/#frozen-shoulder 301
+/services/degenerative-disc-treatment-in-hornsby/ /blog/disc-protrusion-herniated-disc-sciatica-cortisone-injection-surgery/ 301
