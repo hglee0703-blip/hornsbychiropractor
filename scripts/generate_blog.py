@@ -824,6 +824,7 @@ PAGE_TEMPLATE = """<!doctype html>
 {faq_jsonld}
     </script>
     <link rel="stylesheet" href="/styles.css">
+    <script src="/whatsapp.js" defer></script>
   </head>
   <body>
 {chrome}
