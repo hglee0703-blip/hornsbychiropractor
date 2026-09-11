@@ -825,6 +825,7 @@ PAGE_TEMPLATE = """<!doctype html>
     </script>
     <link rel="stylesheet" href="/styles.css">
     <script src="/whatsapp.js" defer></script>
+    <script src="/openai-pixel.js" defer></script>
   </head>
   <body>
 {chrome}
