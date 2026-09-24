@@ -14,11 +14,11 @@ DNS from Bluehost to Cloudflare.
 
 ## Automation
 
-### Daily Blog Post
-매일 시드니 시간 오후 12시 30분(UTC 02:30)에 GitHub Actions가 OpenAI로 자연스러운
+### Weekly Blog Post
+매주 월요일 시드니 시간 오후 12시 30분(AEST, 서머타임에는 오후 1시 30분)에 GitHub Actions가 OpenAI로 자연스러운
 블로그 글과 손그림 2D 애니메이션풍 삽화 2장을 만들어 자동 발행합니다.
 
-- **`.github/workflows/daily-blog.yml`** — 매일 cron 실행 + 수동 실행용 `workflow_dispatch`
+- **`.github/workflows/daily-blog.yml`** — 매주 월요일 cron 실행 + 수동 실행용 `workflow_dispatch`
 - **`scripts/generate_blog.py`** — 전체 파이프라인 (주제 선정 → 글 생성 → 이미지 → 발행 → 텔레그램 알림)
   의존성은 `scripts/requirements.txt`에서 관리
 
@@ -28,7 +28,7 @@ DNS from Bluehost to Cloudflare.
 블로그 자동 발행 작업이 실제로 성공한 직후 Google Business Profile에 자동으로
 지역 게시물(local post)을 등록합니다. GitHub 예약 실행이 늦어져도 실행 순서가 바뀌지 않습니다.
 
-- **`.github/workflows/gbp-post.yml`** — 매일 cron 실행 + 수동 실행용 `workflow_dispatch`
+- **`.github/workflows/gbp-post.yml`** — 블로그 발행 성공 후 실행 + 수동 실행용 `workflow_dispatch`
 - **`scripts/generate_gbp_post.py`** — OAuth2 refresh → GBP API v4 `localPosts.create` 호출
   의존성: `requests` (블로그와 동일)
 

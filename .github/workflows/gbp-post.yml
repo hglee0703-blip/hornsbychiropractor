@@ -4,7 +4,7 @@ name: GBP auto-post
 # causing GBP to publish before the day's article exists.
 on:
   workflow_run:
-    workflows: ["Daily blog post"]
+    workflows: ["Weekly blog post"]
     types: [completed]
   workflow_dispatch:
     inputs:
