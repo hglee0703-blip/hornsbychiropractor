@@ -51,6 +51,8 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 TOPIC_INPUT = os.environ.get("TOPIC", "").strip()
 FORCE = os.environ.get("FORCE", "true").strip().lower() not in ("0", "false", "no")
+SCHEDULED_RUN = os.environ.get("SCHEDULED_RUN", "false").strip().lower() in ("1", "true", "yes")
+POST_INTERVAL_DAYS = max(1, int(os.environ.get("POST_INTERVAL_DAYS", "3")))
 
 DRY_RUN = "--dry-run" in sys.argv
 
@@ -114,6 +116,41 @@ def extract_existing_topics() -> list[str]:
             if child.is_dir():
                 topics.append(child.name)
     return topics
+
+
+def latest_published_date():
+    """Return the newest publication date embedded in an existing post."""
+    dates = []
+    for post_path in BLOG_DIR.glob("*/index.html"):
+        try:
+            page = post_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        match = re.search(r'<time\s+datetime="(\d{4}-\d{2}-\d{2})"', page)
+        if not match:
+            continue
+        try:
+            dates.append(datetime.fromisoformat(match.group(1)).date())
+        except ValueError:
+            continue
+    return max(dates) if dates else None
+
+
+def scheduled_publish_due() -> bool:
+    """Allow scheduled publication only after the configured calendar interval."""
+    latest = latest_published_date()
+    if latest is None:
+        return True
+    today = datetime.now(SYDNEY_TZ).date()
+    elapsed = (today - latest).days
+    if elapsed < POST_INTERVAL_DAYS:
+        remaining = POST_INTERVAL_DAYS - elapsed
+        log(
+            f"Scheduled run skipped: latest post is {latest.isoformat()} "
+            f"({elapsed} day(s) ago); next post is due in {remaining} day(s)."
+        )
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -1299,6 +1336,12 @@ def main() -> int:
             return dry_run()
         finally:
             pass
+    if SCHEDULED_RUN and not scheduled_publish_due():
+        github_output = os.environ.get("GITHUB_OUTPUT", "")
+        if github_output:
+            with Path(github_output).open("a", encoding="utf-8") as output_file:
+                output_file.write("skipped=true\n")
+        return 0
     try:
         published_url, post_title = run_pipeline()
         github_output = os.environ.get("GITHUB_OUTPUT", "")

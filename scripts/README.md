@@ -1,13 +1,13 @@
-# Weekly Blog Automation
+# Blog Automation — Every 3 Days
 
-매주 월요일 시드니 시간 오후 12시 30분(AEST, 서머타임에는 오후 1시 30분)에 GitHub Actions가 OpenAI로 블로그 글과
+GitHub Actions가 매일 발행 시점을 확인하고, 마지막 글로부터 3일이 지난 날에 OpenAI로 블로그 글과
 손그림 2D 애니메이션풍 삽화 2장을 만들어 hornsbychiropractor.com에 자동 발행합니다.
 
 ## 파일 구성
 
 | 파일 | 역할 |
 |---|---|
-| `.github/workflows/daily-blog.yml` | 매주 월요일 cron 실행 + 수동 실행용 workflow_dispatch |
+| `.github/workflows/daily-blog.yml` | 매일 간격 확인 + 3일 간격 발행 + 수동 실행용 workflow_dispatch |
 | `scripts/generate_blog.py` | 전체 파이프라인 (주제 선정 → 글 생성 → 이미지 → 발행 → 텔레그램 알림) |
 | `scripts/requirements.txt` | Python 의존성 (`requests`, `tzdata`) |
 
@@ -37,7 +37,7 @@
 
 ## 수동 실행 (workflow_dispatch)
 
-GitHub 저장소 → Actions 탭 → "Daily blog post" → Run workflow:
+GitHub 저장소 → Actions 탭 → "Blog post every 3 days" → Run workflow:
 
 - **topic** (선택): 비우면 AI가 새 주제를 선정합니다.
 - **force** (기본 true): 유사 주제가 있어도 강제 발행.

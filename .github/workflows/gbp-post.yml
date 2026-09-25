@@ -4,7 +4,7 @@ name: GBP auto-post
 # causing GBP to publish before the day's article exists.
 on:
   workflow_run:
-    workflows: ["Weekly blog post"]
+    workflows: ["Blog post every 3 days"]
     types: [completed]
   workflow_dispatch:
     inputs:
@@ -44,16 +44,38 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check for a newly published blog post
+        id: freshness
+        env:
+          IS_MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          if [ "$IS_MANUAL" = "true" ]; then
+            echo "should_post=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          SYDNEY_TODAY=$(TZ=Australia/Sydney date +%F)
+          LATEST_DATE=$(grep -rhoE '<time datetime="[0-9]{4}-[0-9]{2}-[0-9]{2}"' blog/*/index.html \
+            | sed -E 's/.*datetime="([0-9-]+)"/\1/' | sort -r | head -1)
+          if [ "$LATEST_DATE" = "$SYDNEY_TODAY" ]; then
+            echo "should_post=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_post=false" >> "$GITHUB_OUTPUT"
+            echo "No new Sydney-dated blog post; skipping GBP publication."
+          fi
+
       - name: Set up Python 3.12
+        if: steps.freshness.outputs.should_post == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install dependencies
+        if: steps.freshness.outputs.should_post == 'true'
         run: pip install -r scripts/requirements.txt
 
       - name: Create GBP local post
         id: gbp
+        if: steps.freshness.outputs.should_post == 'true'
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
@@ -72,7 +94,7 @@ jobs:
 
       - name: Read result
         id: result
-        if: always()
+        if: always() && steps.freshness.outputs.should_post == 'true'
         run: |
           if [ ! -f gbp-result.json ]; then
             echo '{"success":false,"error":"MissingResult","message":"gbp-result.json was not created"}' > gbp-result.json
@@ -83,7 +105,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Append to gbp-posts.json log
-        if: always()
+        if: always() && steps.freshness.outputs.should_post == 'true'
         run: |
           LOG_FILE="gbp-posts.json"
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -100,7 +122,7 @@ jobs:
           fi
 
       - name: Commit and push log
-        if: always()
+        if: always() && steps.freshness.outputs.should_post == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -124,7 +146,7 @@ jobs:
           fi
 
       - name: Notify Telegram on failure
-        if: failure()
+        if: failure() && steps.freshness.outputs.should_post == 'true'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
