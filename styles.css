@@ -970,6 +970,7 @@ body.home-screen-prompt-open .whatsapp-float {
 .post-figure svg {
   display: block;
   width: min(100%, 980px);
+  height: auto;
   margin: 0 auto;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -985,6 +986,26 @@ body.home-screen-prompt-open .whatsapp-float {
 
 .post-figure figcaption a {
   color: inherit;
+}
+
+.related-posts {
+  margin-top: 42px;
+  padding: 24px 26px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.post-article .related-posts h2 {
+  margin-top: 0;
+  font-size: clamp(1.45rem, 2.5vw, 1.9rem);
+}
+
+.related-posts ul {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 0;
+  padding-left: 22px;
 }
 
 .reference-list {

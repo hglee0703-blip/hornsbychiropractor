@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Daily auto SEO blog poster for hornsbychiropractor.com.
+"""Automated SEO blog poster for hornsbychiropractor.com.
 
 Pipeline:
   1. Pick a topic (workflow input, or OpenAI suggests a fresh one that does not
      duplicate existing blog/ posts).
   2. Generate and quality-check a natural, reference-backed article with OpenAI.
   3. Generate two restrained hand-drawn 2D editorial illustrations with the
-     OpenAI Image API and store them with the post assets.
+     OpenAI Image API and store compressed WebP assets.
   4. Write blog/{slug}/index.html reusing the existing site chrome, prepend a
      card to blog/index.html, update/create sitemap.xml.
   5. Notify via Telegram (success or failure report).
@@ -16,6 +16,7 @@ Only dependency: requests.
 Usage:
   python scripts/generate_blog.py            # full pipeline (needs OPENAI_API_KEY)
   python scripts/generate_blog.py --dry-run  # no network; tests template assembly
+  python scripts/generate_blog.py --refresh-seo  # refresh schema + related links only
 """
 
 import base64
@@ -47,6 +48,10 @@ OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6")
 OPENAI_IMAGE_MODEL = os.environ.get("OPENAI_IMAGE_MODEL", "gpt-image-2")
 OPENAI_IMAGE_SIZE = os.environ.get("OPENAI_IMAGE_SIZE", "1536x1024")
 OPENAI_IMAGE_QUALITY = os.environ.get("OPENAI_IMAGE_QUALITY", "medium")
+OPENAI_IMAGE_FORMAT = os.environ.get("OPENAI_IMAGE_FORMAT", "webp").strip().lower()
+OPENAI_IMAGE_COMPRESSION = max(
+    0, min(100, int(os.environ.get("OPENAI_IMAGE_COMPRESSION", "82")))
+)
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 TOPIC_INPUT = os.environ.get("TOPIC", "").strip()
@@ -55,6 +60,7 @@ SCHEDULED_RUN = os.environ.get("SCHEDULED_RUN", "false").strip().lower() in ("1"
 POST_INTERVAL_DAYS = max(1, int(os.environ.get("POST_INTERVAL_DAYS", "3")))
 
 DRY_RUN = "--dry-run" in sys.argv
+REFRESH_SEO = "--refresh-seo" in sys.argv
 
 SYDNEY_TZ = ZoneInfo("Australia/Sydney")
 
@@ -63,21 +69,30 @@ OPENAI_IMAGES_URL = "https://api.openai.com/v1/images/generations"
 TIMEOUT_OPENAI_TEXT = 240
 TIMEOUT_OPENAI_IMAGE = 300
 
-# Existing posts used for internal linking + topic dedupe.
-EXISTING_POSTS = {
-    "lumbar-disc-injury-management": "Lumbar Disc Injury Management",
-    "disc-protrusion-herniated-disc-sciatica-cortisone-injection-surgery": (
-        "In-Depth Research of Disc protrusion, Herniated Disc, Sciatica, "
-        "Cortisone Injection and Disc Surgeries"
-    ),
+BOOKING_URL = (
+    "https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/"
+)
+BLOG_NAME = "Hornsby Chiropractor Blog"
+BLOG_DESCRIPTION = (
+    "Practical, evidence-informed articles for Hornsby patients about back pain, "
+    "neck pain, posture, movement and recovery."
+)
+
+SEO_STOP_WORDS = {
+    "about", "after", "again", "against", "also", "and", "are", "article", "best", "can",
+    "causes", "chiro", "chiropractic", "does", "for", "from", "guide", "have", "help",
+    "helps", "hornsby", "how", "hurt", "hurts", "into", "its", "pain", "practical",
+    "relief", "should", "simple", "that", "the", "their", "then", "this", "tips", "to",
+    "what", "when", "where", "which", "while", "why", "with", "without", "your",
 }
 
-INTERNAL_LINK_HINTS = (
-    "- /blog/lumbar-disc-injury-management/ : practical lumbar disc management "
-    "(McKenzie exercise, driving, walking, sitting posture, medication)\n"
-    "- /blog/disc-protrusion-herniated-disc-sciatica-cortisone-injection-surgery/ : "
-    "in-depth research on disc protrusion, sciatica, cortisone injections and surgery\n"
-    "If genuinely relevant, include 1-2 internal links to these URLs inside the body."
+RELATED_TOPIC_GROUPS = (
+    {"neck", "cervical", "whiplash", "headache", "headaches", "skull", "jaw"},
+    {"shoulder", "shoulders", "upper", "backpack", "overhead"},
+    {"back", "lower", "lumbar", "sciatica", "sciatic", "disc", "tailbone", "coccyx", "hip", "leg"},
+    {"desk", "sitting", "computer", "phone", "driving", "commuting", "train", "posture", "backpack", "standing"},
+    {"exercise", "running", "weights", "lifting", "gardening", "stretch", "sport", "hip"},
+    {"sleep", "sleeping", "morning", "bed", "pillow", "pregnancy"},
 )
 
 # ---------------------------------------------------------------------------
@@ -104,8 +119,13 @@ def strip_html(text: str) -> str:
     return re.sub(r"<[^>]+>", " ", text)
 
 
+def clean_visible_text(text: str) -> str:
+    """Return readable, whitespace-normalised text from a small HTML fragment."""
+    return re.sub(r"\s+", " ", html.unescape(strip_html(text))).strip()
+
+
 def word_count(html_text: str) -> int:
-    return len(strip_html(html_text).split())
+    return len(clean_visible_text(html_text).split())
 
 
 def extract_existing_topics() -> list[str]:
@@ -116,6 +136,128 @@ def extract_existing_topics() -> list[str]:
             if child.is_dir():
                 topics.append(child.name)
     return topics
+
+
+def _meta_content(page: str, key: str) -> str:
+    """Read a named or Open Graph meta value regardless of attribute order."""
+    for tag in re.findall(r"<meta\b[^>]*>", page, flags=re.IGNORECASE | re.DOTALL):
+        attrs = {
+            name.lower(): html.unescape(value)
+            for name, _quote, value in re.findall(
+                r"([:\w-]+)\s*=\s*([\"'])(.*?)\2", tag, flags=re.DOTALL
+            )
+        }
+        if attrs.get("name", "").lower() == key.lower():
+            return attrs.get("content", "").strip()
+        if attrs.get("property", "").lower() == key.lower():
+            return attrs.get("content", "").strip()
+    return ""
+
+
+def _post_record(post_path: Path) -> dict | None:
+    """Extract the SEO fields needed for linking and the Blog listing schema."""
+    try:
+        page = post_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    h1 = re.search(r"<h1\b[^>]*>(.*?)</h1>", page, flags=re.IGNORECASE | re.DOTALL)
+    title = clean_visible_text(h1.group(1)) if h1 else ""
+    if not title:
+        return None
+
+    slug = post_path.parent.name
+    date_match = re.search(
+        r"<time\b[^>]*datetime=[\"'](\d{4}-\d{2}-\d{2})[\"']",
+        page,
+        flags=re.IGNORECASE,
+    )
+    meta_match = re.search(
+        r"<p\b[^>]*class=[\"'][^\"']*post-meta[^\"']*[\"'][^>]*>(.*?)</p>",
+        page,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    meta_text = clean_visible_text(meta_match.group(1)) if meta_match else ""
+    category = meta_text.rsplit("·", 1)[-1].strip() if "·" in meta_text else ""
+    canonical_match = re.search(
+        r"<link\b[^>]*rel=[\"']canonical[\"'][^>]*href=[\"']([^\"']+)",
+        page,
+        flags=re.IGNORECASE,
+    )
+    canonical = (
+        canonical_match.group(1).strip()
+        if canonical_match
+        else f"{SITE_DOMAIN}/blog/{slug}/"
+    )
+    return {
+        "slug": slug,
+        "path": post_path,
+        "url": f"/blog/{slug}/",
+        "canonical": canonical,
+        "title": title,
+        "description": _meta_content(page, "description"),
+        "category": category,
+        "date": date_match.group(1) if date_match else "",
+        "image": _meta_content(page, "og:image"),
+    }
+
+
+def extract_post_catalog() -> list[dict]:
+    records = []
+    for post_path in BLOG_DIR.glob("*/index.html"):
+        record = _post_record(post_path)
+        if record:
+            records.append(record)
+    return sorted(records, key=lambda item: (item["date"], item["title"]), reverse=True)
+
+
+def _seo_tokens(text: str) -> set[str]:
+    words = set(re.findall(r"[a-z0-9]+", html.unescape(text).lower()))
+    return {word for word in words if len(word) >= 3 and word not in SEO_STOP_WORDS}
+
+
+def _rank_related_posts(query: str, exclude_slug: str = "", limit: int = 8) -> list[dict]:
+    query_tokens = _seo_tokens(query)
+    scored = []
+    for index, item in enumerate(extract_post_catalog()):
+        if item["slug"] == exclude_slug:
+            continue
+        candidate_core_tokens = _seo_tokens(
+            f"{item['title']} {item['category']} {item['slug']}"
+        )
+        candidate_description_tokens = _seo_tokens(item["description"])
+        core_overlap = query_tokens & candidate_core_tokens
+        description_overlap = query_tokens & candidate_description_tokens
+        score = len(core_overlap) * 10 + min(len(description_overlap), 2)
+        for group in RELATED_TOPIC_GROUPS:
+            if query_tokens & group and candidate_core_tokens & group:
+                score += 4
+        # Preserve recency as a small tie-breaker without overpowering relevance.
+        if score >= 4:
+            scored.append((score, -index, item))
+    scored.sort(key=lambda row: (row[0], row[1], row[2]["title"]), reverse=True)
+    return [row[2] for row in scored[:limit]]
+
+
+def build_internal_link_hints(topic: str) -> tuple[str, set[str]]:
+    """Offer only real, contextually ranked site URLs to the writing model."""
+    related = _rank_related_posts(topic, limit=10)
+    candidates = [
+        ("/services/", "Chiropractic services and what an appointment involves"),
+        ("/directions/", "Hornsby clinic location and directions"),
+        ("/#about", "About Andy Lee and Hornsby Chiropractor"),
+        (BOOKING_URL, "Online appointment booking"),
+    ]
+    candidates.extend((item["url"], item["title"]) for item in related)
+    lines = "\n".join(f"- {url} : {label}" for url, label in candidates)
+    instruction = (
+        "Choose 2-4 genuinely relevant links from the verified candidates below. "
+        "Prioritise useful related articles and the services page. Use each URL at most once, "
+        "with descriptive anchor text. A booking link may appear once near the end only when it "
+        "fits naturally; do not force a sales call to action. Use the URLs exactly as supplied.\n"
+        f"{lines}"
+    )
+    return instruction, {url for url, _label in candidates}
 
 
 def latest_published_date():
@@ -190,11 +332,13 @@ TOPIC_SYSTEM_PROMPT = """You are the content strategist for Hornsby Chiropractor
 a chiropractic clinic in Hornsby, NSW, Australia (author: Andy Lee).
 
 Suggest ONE new blog post topic for local patients. Requirements:
-- A question-style or how-to style topic that a real person around Hornsby would \
+- A specific, long-tail question or how-to search phrase that a real patient would \
 type into Google (e.g. "how to sleep with lower back pain", "best desk setup for neck pain").
 - Relevant to chiropractic care: back pain, neck pain, posture, headaches, sciatica, \
 sports injuries, ergonomics, sleep and pain, exercise and recovery, etc.
 - It must NOT be substantially similar to any of the already-published topics listed below.
+- Vary the symptom, activity and search intent instead of producing another minor rewrite of a common topic.
+- Use "Hornsby" only for a genuinely local-intent topic, not as a keyword added to every title.
 - Answer ONLY with the topic text itself. No quotes, no numbering, no explanation."""
 
 ARTICLE_PROMPT_TEMPLATE = """You are Andy Lee, a chiropractor running a clinic in Hornsby, Sydney, Australia. \
@@ -227,21 +371,30 @@ reference link to a trustworthy source: PubMed/NCBI (pubmed.ncbi.nlm.nih.gov), C
 after the sentence they support (e.g. ...as shown in a Cochrane review (<a href="https://...">Cochrane, 2021</a>).).
 - NEVER invent numbers, percentages or effect sizes. If unsure of exact figures, phrase \
 qualitatively and still cite a real, well-known source URL you are confident exists.
-- Include a short disclaimer paragraph stating this is general information only, not a diagnosis \
-or treatment advice, and readers should consult a qualified health professional.
+- Do not add a disclaimer inside html_body; the page template adds the standard clinical disclaimer.
+
+SEARCH INTENT AND SEO — NATURAL, NEVER STUFFED:
+- Choose one 3-7 word primary search phrase that exactly describes the patient's intent.
+- Use that primary keyword naturally in the title, short slug, meta description, first paragraph and \
+one useful <h2>. Across the body, use the exact phrase only 2-5 times; use natural related wording elsewhere.
+- The title must lead with the patient need rather than the clinic name. Keep it 45-60 characters when possible.
+- The opening must address the search intent in the first 100 visible words without sounding like an SEO formula.
+- Mention Hornsby, Sydney or Australian context only where it gives the reader useful local context.
+- Never repeat a keyword just to satisfy a count, and never make medical promises for ranking purposes.
 
 STRUCTURE:
-- Total length: 900-1400 words (count only visible text).
-- 4-6 <h2> section headings, each followed by 1-3 paragraphs.
+- Total length: 1100-1450 words (count only visible text).
+- 5-7 <h2> section headings in total, including the FAQ heading; each content heading is followed by 1-3 paragraphs.
 - An FAQ section at the end with 3-4 questions as <h3> headings, each answered in 2-4 sentences. \
 FAQ answers may cite sources too.
 - {internal_links}
 
 OUTPUT FORMAT — return ONLY a valid JSON object, no markdown fences, matching exactly:
 {{
+  "primary_keyword": "the single 3-7 word patient search phrase",
   "slug": "short-kebab-case-url-slug",
   "title": "SEO title, max 60 characters",
-  "meta_description": "meta description, 150-160 characters",
+  "meta_description": "benefit-led meta description, 145-155 characters",
   "category": "short category label like 'Lower back pain' or 'Neck & posture'",
   "intro_summary": "1-2 sentence summary used on the blog listing card, max 200 characters",
   "html_body": "<p>...</p><h2>...</h2>... full article HTML including FAQ section. \
@@ -250,8 +403,10 @@ Use only p, h2, h3, strong, em, ul, li, a tags. No h1 (the template adds it), no
     {{"question": "...", "answer": "..."}}
   ],
   "image_prompts": [
-    "specific everyday scene for the opening illustration, describing people, setting, action and composition",
-    "different practical scene for the middle illustration, describing people, setting, action and composition"
+    {{"scene": "specific everyday opening scene with people, setting, action and composition", \
+"alt": "short literal description of what is visible, without keyword stuffing"}},
+    {{"scene": "different practical middle scene with people, setting, action and composition", \
+"alt": "short literal description of this different visible scene"}}
   ]
 }}
 The faq array must mirror the FAQ H3s in html_body. The two image prompts must be visually distinct,
@@ -329,23 +484,44 @@ def parse_article_json(raw: str) -> dict:
     if start == -1 or end == -1:
         raise ValueError("No JSON object found in response")
     obj = json.loads(text[start : end + 1])
-    required = ["slug", "title", "meta_description", "category", "intro_summary", "html_body"]
+    required = [
+        "primary_keyword", "slug", "title", "meta_description", "category",
+        "intro_summary", "html_body",
+    ]
     missing = [k for k in required if not str(obj.get(k, "")).strip()]
     if missing:
         raise ValueError(f"Article JSON missing keys: {missing}")
     obj.setdefault("faq", [])
     if not isinstance(obj["faq"], list):
         obj["faq"] = []
-    prompts = obj.get("image_prompts") or []
-    if not isinstance(prompts, list):
-        prompts = []
-    prompts = [str(p).strip() for p in prompts if str(p).strip()][:2]
+    raw_prompts = obj.get("image_prompts") or []
+    if not isinstance(raw_prompts, list):
+        raw_prompts = []
+    prompts = []
+    for item in raw_prompts[:2]:
+        if isinstance(item, dict):
+            scene = str(item.get("scene", "")).strip()
+            alt = str(item.get("alt", "")).strip()
+        else:  # Backward-compatible with older response shapes.
+            scene = str(item).strip()
+            alt = ""
+        if scene:
+            prompts.append({
+                "scene": scene,
+                "alt": alt or f"Hand-drawn scene about {obj['title']}",
+            })
     while len(prompts) < 2:
-        prompts.append(
-            f"An everyday Australian adult dealing with {obj['title']} in a calm, "
-            "realistic home or work setting"
-        )
+        prompts.append({
+            "scene": (
+                f"An everyday Australian adult dealing with {obj['title']} in a calm, "
+                "realistic home or work setting"
+            ),
+            "alt": f"Everyday scene illustrating {obj['title']}",
+        })
     obj["image_prompts"] = prompts
+    obj["primary_keyword"] = re.sub(
+        r"\s+", " ", str(obj["primary_keyword"])
+    ).strip(" \"'.,;:")
     return obj
 
 
@@ -365,6 +541,93 @@ def article_style_issues(article: dict) -> list[str]:
         issues.append(f"visible word count {wc} is outside 850-1500")
     if visible.count("—"):
         issues.append("contains em dash")
+    if "general information only" in lower:
+        issues.append("html_body contains a duplicate disclaimer")
+    return issues
+
+
+def _normalise_for_match(text: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", clean_visible_text(text).lower()))
+
+
+def _normalise_candidate_url(url: str) -> str:
+    url = html.unescape(url.strip())
+    if url.startswith("/"):
+        url = url.split("#", 1)[0].split("?", 1)[0]
+        return url.rstrip("/") + "/"
+    return url.rstrip("/") + "/"
+
+
+def article_seo_issues(article: dict, allowed_urls: set[str]) -> list[str]:
+    """Reject structural SEO mistakes while allowing natural prose around the keyphrase."""
+    issues: list[str] = []
+    keyword = _normalise_for_match(article.get("primary_keyword", ""))
+    if len(keyword.split()) < 3 or len(keyword.split()) > 7:
+        issues.append("primary_keyword must contain 3-7 words")
+
+    title = _normalise_for_match(article["title"])
+    meta = _normalise_for_match(article["meta_description"])
+    first_paragraph_match = re.search(
+        r"<p\b[^>]*>(.*?)</p>", article["html_body"], flags=re.IGNORECASE | re.DOTALL
+    )
+    first_paragraph = _normalise_for_match(
+        first_paragraph_match.group(1) if first_paragraph_match else ""
+    )
+    h2_values = [
+        _normalise_for_match(value)
+        for value in re.findall(
+            r"<h2\b[^>]*>(.*?)</h2>",
+            article["html_body"],
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+    ]
+
+    if keyword:
+        if keyword not in title:
+            issues.append("primary keyword is missing from the title")
+        if slugify(keyword) not in slugify(article["slug"]):
+            issues.append("primary keyword words are missing from the slug")
+        if keyword not in meta:
+            issues.append("primary keyword is missing from the meta description")
+        if keyword not in first_paragraph:
+            issues.append("primary keyword is missing from the first paragraph")
+        if not any(keyword in heading for heading in h2_values):
+            issues.append("primary keyword is missing from an H2")
+        exact_uses = _normalise_for_match(article["html_body"]).count(keyword)
+        if exact_uses < 2 or exact_uses > 6:
+            issues.append(f"primary keyword appears {exact_uses} times in the body; expected 2-6")
+
+    if len(article["title"]) > 60:
+        issues.append(f"title is {len(article['title'])} characters; maximum is 60")
+    meta_len = len(article["meta_description"])
+    if meta_len < 145 or meta_len > 155:
+        issues.append(f"meta description is {meta_len} characters; expected 145-155")
+    if len(article["intro_summary"]) > 200:
+        issues.append("intro summary exceeds 200 characters")
+    if len(h2_values) < 5 or len(h2_values) > 7:
+        issues.append(f"article has {len(h2_values)} H2 headings; expected 5-7")
+    h3_count = len(re.findall(r"<h3\b", article["html_body"], flags=re.IGNORECASE))
+    if h3_count < 3 or h3_count > 4:
+        issues.append(f"article has {h3_count} H3 headings; expected 3-4 FAQ questions")
+
+    hrefs = re.findall(
+        r"<a\b[^>]*href\s*=\s*([\"'])(.*?)\1",
+        article["html_body"],
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    contextual_links = [
+        _normalise_candidate_url(url)
+        for _quote, url in hrefs
+        if url.strip().startswith("/") or url.strip().startswith(BOOKING_URL)
+    ]
+    allowed_normalised = {_normalise_candidate_url(url) for url in allowed_urls}
+    unknown = sorted({url for url in contextual_links if url not in allowed_normalised})
+    if unknown:
+        issues.append("unverified internal URL(s): " + ", ".join(unknown))
+    if len(contextual_links) < 2 or len(contextual_links) > 4:
+        issues.append(f"article has {len(contextual_links)} contextual site links; expected 2-4")
+    if len(contextual_links) != len(set(contextual_links)):
+        issues.append("a contextual site link is repeated")
     return issues
 
 
@@ -383,7 +646,7 @@ def pick_topic(existing_slugs: list[str]) -> tuple[str, bool]:
 
 
 def generate_article(topic: str) -> dict:
-    internal_links = INTERNAL_LINK_HINTS if EXISTING_POSTS else ""
+    internal_links, allowed_urls = build_internal_link_hints(topic)
     prompt = ARTICLE_PROMPT_TEMPLATE.format(
         topic=topic,
         today=sydney_today(),
@@ -392,11 +655,18 @@ def generate_article(topic: str) -> dict:
     last_err = None
     for attempt in range(1, 4):
         try:
-            raw = openai_generate(prompt)
+            attempt_prompt = prompt
+            if last_err is not None:
+                attempt_prompt += (
+                    "\n\nThe previous draft failed the automated checks below. Regenerate the complete "
+                    "JSON article and correct every issue without mentioning this feedback:\n- "
+                    + str(last_err).replace("; ", "\n- ")
+                )
+            raw = openai_generate(attempt_prompt)
             article = parse_article_json(raw)
-            issues = article_style_issues(article)
+            issues = article_style_issues(article) + article_seo_issues(article, allowed_urls)
             if issues:
-                raise ValueError("style check failed: " + "; ".join(issues))
+                raise ValueError("quality check failed: " + "; ".join(issues))
             return article
         except (ValueError, KeyError, json.JSONDecodeError, OpenAIError) as exc:
             last_err = exc
@@ -422,13 +692,33 @@ Scene to illustrate: {scene}
 """
 
 
+def _effective_image_format() -> str:
+    if OPENAI_IMAGE_MODEL.startswith("gpt-image-") and OPENAI_IMAGE_FORMAT in {
+        "png", "jpeg", "webp",
+    }:
+        return OPENAI_IMAGE_FORMAT
+    return "png"
+
+
+def _requested_image_dimensions() -> tuple[int | None, int | None]:
+    match = re.fullmatch(r"(\d+)x(\d+)", OPENAI_IMAGE_SIZE.strip().lower())
+    if not match:
+        return None, None
+    return int(match.group(1)), int(match.group(2))
+
+
 def _generate_image_bytes(scene: str) -> bytes:
+    image_format = _effective_image_format()
     payload = {
         "model": OPENAI_IMAGE_MODEL,
         "prompt": IMAGE_STYLE_PROMPT.format(scene=scene),
         "size": OPENAI_IMAGE_SIZE,
         "quality": OPENAI_IMAGE_QUALITY,
     }
+    if OPENAI_IMAGE_MODEL.startswith("gpt-image-"):
+        payload["output_format"] = image_format
+        if image_format in {"webp", "jpeg"}:
+            payload["output_compression"] = OPENAI_IMAGE_COMPRESSION
     max_attempts = 4
     for attempt in range(1, max_attempts + 1):
         resp = requests.post(
@@ -457,17 +747,26 @@ def _generate_image_bytes(scene: str) -> bytes:
 
 
 def build_generated_images(article: dict) -> tuple[list[dict], list[str]]:
-    """Generate two original PNG illustrations and return page-ready metadata."""
+    """Generate two original, compressed illustrations and page-ready metadata."""
     ASSETS_IMG_DIR.mkdir(parents=True, exist_ok=True)
     images: list[dict] = []
     notes: list[str] = []
     prompts = article.get("image_prompts") or []
+    image_format = _effective_image_format()
+    extension = "jpg" if image_format == "jpeg" else image_format
+    width, height = _requested_image_dimensions()
 
-    for n, scene in enumerate(prompts[:2], start=1):
-        filename = f"{article['slug']}-illustration-{n}.png"
+    for n, prompt_item in enumerate(prompts[:2], start=1):
+        if isinstance(prompt_item, dict):
+            scene = str(prompt_item.get("scene", "")).strip()
+            alt = str(prompt_item.get("alt", "")).strip()
+        else:
+            scene = str(prompt_item).strip()
+            alt = ""
+        filename = f"{article['slug']}-illustration-{n}.{extension}"
         destination = ASSETS_IMG_DIR / filename
         try:
-            image_bytes = _generate_image_bytes(str(scene))
+            image_bytes = _generate_image_bytes(scene)
             if len(image_bytes) < 10_000:
                 raise OpenAIError(f"Generated image was unexpectedly small ({len(image_bytes)} bytes)")
             destination.write_bytes(image_bytes)
@@ -475,9 +774,11 @@ def build_generated_images(article: dict) -> tuple[list[dict], list[str]]:
                 "ok": True,
                 "kind": "generated",
                 "public_path": f"/assets/blog-images/{filename}",
-                "alt": f"Hand-drawn illustration for {article['title']}",
+                "alt": alt or f"Hand-drawn scene about {article['title']}",
                 "caption": "Original editorial illustration for Hornsby Chiropractor.",
                 "n": n,
+                "width": width,
+                "height": height,
             })
             log(f"Generated illustration {n}: {filename}")
         except Exception as exc:  # noqa: BLE001
@@ -795,10 +1096,17 @@ def _reference_figure_html(img: dict) -> str:
             f'Source: {html.escape(img["citation"])}. '
             f'<a href="{img["ref_url"]}">{html.escape(img["license"])}</a>'
         )
+    dimension_attrs = ""
+    if img.get("width") and img.get("height"):
+        dimension_attrs = f' width="{int(img["width"])}" height="{int(img["height"])}"'
+    if int(img.get("n", 2)) == 1:
+        loading_attrs = ' loading="eager" fetchpriority="high" decoding="async"'
+    else:
+        loading_attrs = ' loading="lazy" decoding="async"'
     return (
         '<figure class="post-figure">\n'
         f'          <img src="{img["public_path"]}" '
-        f'alt="{html.escape(img["alt"])}" loading="lazy">\n'
+        f'alt="{html.escape(img["alt"])}"{dimension_attrs}{loading_attrs}>\n'
         f'          <figcaption>{figcaption}</figcaption>\n'
         "        </figure>"
     )
@@ -831,12 +1139,41 @@ def insert_images_into_body(body: str, images: list[dict], title: str) -> str:
     return body
 
 
+def build_related_articles_html(article: dict, max_count: int = 3) -> str:
+    """Build a small, crawlable related-reading block using real published posts."""
+    query = " ".join(
+        str(article.get(key, ""))
+        for key in ("primary_keyword", "title", "category", "description", "meta_description")
+    )
+    related = _rank_related_posts(
+        query,
+        exclude_slug=str(article.get("slug", "")),
+        limit=max_count,
+    )
+    if not related:
+        return ""
+    items = "\n".join(
+        f'            <li><a href="{item["url"]}">{html.escape(item["title"])}</a></li>'
+        for item in related
+    )
+    return (
+        '        <!-- related-posts:start -->\n'
+        '        <aside class="related-posts" aria-labelledby="related-articles-heading">\n'
+        '          <h2 id="related-articles-heading">Related articles</h2>\n'
+        '          <ul>\n'
+        f"{items}\n"
+        '          </ul>\n'
+        '        </aside>\n'
+        '        <!-- related-posts:end -->'
+    )
+
+
 # ---------------------------------------------------------------------------
 # Page assembly
 # ---------------------------------------------------------------------------
 
 PAGE_TEMPLATE = """<!doctype html>
-<html lang="en">
+<html lang="en-AU">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -853,7 +1190,11 @@ PAGE_TEMPLATE = """<!doctype html>
     <meta property="og:url" content="{canonical}">
     <meta property="og:image" content="{og_image}">
     <meta property="og:site_name" content="Hornsby Chiropractor">
+    <meta property="og:locale" content="en_AU">
     <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{og_title}">
+    <meta name="twitter:description" content="{meta_description}">
+    <meta name="twitter:image" content="{og_image}">
     <script type="application/ld+json">
 {blogposting_jsonld}
     </script>
@@ -880,8 +1221,10 @@ MAIN_TEMPLATE = """<main class="post-page">
       <article class="post-article">
         <a class="post-back" href="/blog/">Back to blog</a>
         <h1>{title}</h1>
-        <p class="post-meta"><time datetime="{date_iso}">{date_human}</time> · {category}</p>
+        <p class="post-meta"><time datetime="{date_iso}">{date_human}</time> · \
+<a href="/#about">Andy Lee, Chiropractor</a> · {category}</p>
 {body_with_images}
+{related_html}
         <p class="post-disclaimer"><em>Disclaimer: this article is general information only, \
 not medical diagnosis or treatment advice. Every person is different — please consult a \
 qualified health professional (like your local chiropractor or GP) before acting on anything \
@@ -963,18 +1306,34 @@ def build_blogposting_jsonld(article: dict, canonical: str, date_pub: str, og_im
         "@type": "BlogPosting",
         "headline": article["title"],
         "description": article["meta_description"],
-        "author": {"@type": "Person", "name": "Andy Lee"},
+        "inLanguage": "en-AU",
+        "author": {
+            "@type": "Person",
+            "name": "Andy Lee",
+            "jobTitle": "Chiropractor",
+            "url": f"{SITE_DOMAIN}/#about",
+        },
         "publisher": {
             "@type": "Organization",
             "name": "Hornsby Chiropractor",
             "url": SITE_DOMAIN,
+            "logo": {
+                "@type": "ImageObject",
+                "url": f"{SITE_DOMAIN}/assets/hornsby-logo-cropped.png",
+            },
         },
         "datePublished": date_pub,
         "dateModified": date_pub,
         "url": canonical,
         "mainEntityOfPage": {"@type": "WebPage", "@id": canonical},
+        "isPartOf": {"@type": "Blog", "@id": f"{SITE_DOMAIN}/blog/#blog"},
         "image": [og_image] if og_image else [],
-        "keywords": article.get("category", ""),
+        "articleSection": article.get("category", ""),
+        "keywords": ", ".join(
+            value for value in (
+                article.get("primary_keyword", ""), article.get("category", "")
+            ) if value
+        ),
     }
     return json.dumps(data, indent=2, ensure_ascii=False)
 
@@ -1022,6 +1381,7 @@ def write_post_page(article: dict, images: list[dict], chrome: str) -> Path:
         date_human=date_human,
         category=category,
         body_with_images=body_with_images,
+        related_html=build_related_articles_html(article),
     )
 
     page = PAGE_TEMPLATE.format(
@@ -1041,6 +1401,63 @@ def write_post_page(article: dict, images: list[dict], chrome: str) -> Path:
     out_file = out_dir / "index.html"
     out_file.write_text(page, encoding="utf-8")
     return out_file
+
+
+def build_blog_index_jsonld() -> str:
+    posts = []
+    for item in extract_post_catalog():
+        post = {
+            "@type": "BlogPosting",
+            "headline": item["title"],
+            "url": item["canonical"],
+        }
+        if item["description"]:
+            post["description"] = item["description"]
+        if item["date"]:
+            post["datePublished"] = item["date"]
+        if item["image"]:
+            post["image"] = item["image"]
+        posts.append(post)
+    data = {
+        "@context": "https://schema.org",
+        "@type": "Blog",
+        "@id": f"{SITE_DOMAIN}/blog/#blog",
+        "url": f"{SITE_DOMAIN}/blog/",
+        "name": BLOG_NAME,
+        "description": BLOG_DESCRIPTION,
+        "inLanguage": "en-AU",
+        "image": f"{SITE_DOMAIN}/assets/hero-treatment-wide.jpg",
+        "publisher": {
+            "@type": "Organization",
+            "name": "Hornsby Chiropractor",
+            "url": SITE_DOMAIN,
+            "logo": {
+                "@type": "ImageObject",
+                "url": f"{SITE_DOMAIN}/assets/hornsby-logo-cropped.png",
+            },
+        },
+        "blogPost": posts,
+    }
+    return json.dumps(data, indent=2, ensure_ascii=False)
+
+
+def _upsert_blog_index_schema(page: str) -> str:
+    schema = build_blog_index_jsonld()
+    block = f'    <script id="blog-schema" type="application/ld+json">\n{schema}\n    </script>'
+    pattern = re.compile(
+        r"\s*<script\b[^>]*id=[\"']blog-schema[\"'][^>]*>.*?</script>",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if pattern.search(page):
+        return pattern.sub("\n" + block, page, count=1)
+    return page.replace("  </head>", block + "\n  </head>", 1)
+
+
+def refresh_blog_index_schema() -> Path:
+    listing = BLOG_DIR / "index.html"
+    page = listing.read_text(encoding="utf-8")
+    listing.write_text(_upsert_blog_index_schema(page), encoding="utf-8")
+    return listing
 
 
 def prepend_blog_card(article: dict) -> Path:
@@ -1063,9 +1480,41 @@ def prepend_blog_card(article: dict) -> Path:
         f"          </p>\n"
         f"        </a>"
     )
-    new_text = text[:tag_end] + card + text[tag_end:]
+    new_text = _upsert_blog_index_schema(text[:tag_end] + card + text[tag_end:])
     listing.write_text(new_text, encoding="utf-8")
     return listing
+
+
+def refresh_existing_related_posts() -> int:
+    """Idempotently add a relevant three-link reading block to every post."""
+    changed = 0
+    marker_pattern = re.compile(
+        r"\s*<!-- related-posts:start -->.*?<!-- related-posts:end -->",
+        flags=re.DOTALL,
+    )
+    for item in extract_post_catalog():
+        page = item["path"].read_text(encoding="utf-8")
+        page_without_old = marker_pattern.sub("", page)
+        related_html = build_related_articles_html(item)
+        if not related_html:
+            continue
+        disclaimer_marker = '        <p class="post-disclaimer">'
+        if disclaimer_marker in page_without_old:
+            updated = page_without_old.replace(
+                disclaimer_marker,
+                related_html + "\n" + disclaimer_marker,
+                1,
+            )
+        elif "      </article>" in page_without_old:
+            updated = page_without_old.replace(
+                "      </article>", related_html + "\n      </article>", 1
+            )
+        else:
+            continue
+        if updated != page:
+            item["path"].write_text(updated, encoding="utf-8")
+            changed += 1
+    return changed
 
 
 SITEMAP_HEADER = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
@@ -1150,10 +1599,12 @@ def run_pipeline() -> tuple[str, str]:
 
     chrome = extract_chrome(BLOG_DIR / "lumbar-disc-injury-management" / "index.html")
     post_path = write_post_page(article, images, chrome)
+    related_updates = refresh_existing_related_posts()
     listing_path = prepend_blog_card(article)
     sitemap_path = update_sitemap(slug)
 
     log(f"Wrote {post_path}")
+    log(f"Refreshed related reading on {related_updates} post(s)")
     log(f"Updated {listing_path}")
     log(f"Updated {sitemap_path}")
 
@@ -1180,30 +1631,70 @@ def dry_run() -> int:
     ) == 1
     article = {
         "slug": "dry-run-test-post",
-        "title": "Dry Run Test Post Title",
-        "meta_description": "Sample meta description used only to verify template assembly in dry-run mode.",
-        "category": "Testing",
+        "primary_keyword": "dry run test post",
+        "title": "Dry Run Test Post for Template Verification",
+        "meta_description": (
+            "Dry run test post for checking page structure, internal links, metadata and image "
+            "placement before the automated Hornsby blog workflow publishes."
+        ),
+        "category": "Lower back pain",
         "intro_summary": "This is a dry-run summary used to verify the blog listing card insertion logic.",
         "html_body": (
-            "<p>This is the intro paragraph of the dry run test article. It exists purely "
+            "<p>This dry run test post checks the page before publication. It exists purely "
             "to check that images get inserted after the correct anchor elements.</p>"
-            "<p>A second paragraph that acts as the primary image anchor point.</p>"
-            "<h2>First Section Heading</h2><p>Section one body text with a "
+            "<p>A second paragraph links to the <a href=\"/services/\">clinic services</a> "
+            "and acts as the primary image anchor point.</p>"
+            "<h2>How the dry run test post is checked</h2><p>Section one body text with a "
             '<a href="https://www.healthdirect.gov.au/">reference link</a>.</p>'
-            "<h2>Second Section Heading</h2><p>Section two body text.</p>"
+            "<h2>Check the assembled page</h2><p>Section two body text links to the "
+            '<a href="/blog/lumbar-disc-injury-management/">lumbar management guide</a>.</p>'
+            "<h2>Check image placement</h2><p>Section three body text.</p>"
+            "<h2>Check publishing metadata</h2><p>Section four body text.</p>"
+            "<h2>Frequently asked questions</h2>"
             "<h3>What is a dry run?</h3><p>An answer explaining dry runs.</p>"
+            "<h3>Does it call the API?</h3><p>No, the test remains offline.</p>"
+            "<h3>Are temporary files kept?</h3><p>No, they are removed after validation.</p>"
         ),
-        "faq": [{"question": "What is a dry run?", "answer": "A test without side effects."}],
+        "faq": [
+            {"question": "What is a dry run?", "answer": "A test without side effects."},
+            {"question": "Does it call the API?", "answer": "No, the test remains offline."},
+            {"question": "Are temporary files kept?", "answer": "No, they are removed."},
+        ],
+        "image_prompts": [
+            {"scene": "A clinician checking a webpage layout", "alt": "Clinician checking a webpage"},
+            {"scene": "A tidy desk with a publishing checklist", "alt": "Publishing checklist on a desk"},
+        ],
     }
+    allowed_test_urls = {"/services/", "/blog/lumbar-disc-injury-management/"}
+    seo_issues = article_seo_issues(article, allowed_test_urls)
+    assert not seo_issues, f"valid SEO fixture failed: {seo_issues}"
+    missing_intro_keyword = dict(article)
+    missing_intro_keyword["html_body"] = article["html_body"].replace(
+        "dry run test post", "template verification", 1
+    )
+    assert any(
+        "first paragraph" in issue
+        for issue in article_seo_issues(missing_intro_keyword, allowed_test_urls)
+    )
+    unknown_link = dict(article)
+    unknown_link["html_body"] = article["html_body"].replace(
+        "/services/", "/blog/not-a-real-post/", 1
+    )
+    assert any(
+        "unverified internal URL" in issue
+        for issue in article_seo_issues(unknown_link, allowed_test_urls)
+    )
     images = [
         {"ok": True, "kind": "generated",
-         "public_path": "/assets/blog-images/dry-run-test-post-illustration-1.png",
+         "public_path": "/assets/blog-images/dry-run-test-post-illustration-1.webp",
          "alt": "Hand-drawn sample illustration",
-         "caption": "Original editorial illustration for Hornsby Chiropractor.", "n": 1},
+         "caption": "Original editorial illustration for Hornsby Chiropractor.",
+         "width": 1536, "height": 1024, "n": 1},
         {"ok": True, "kind": "generated",
-         "public_path": "/assets/blog-images/dry-run-test-post-illustration-2.png",
+         "public_path": "/assets/blog-images/dry-run-test-post-illustration-2.webp",
          "alt": "Second hand-drawn sample illustration",
-         "caption": "Original editorial illustration for Hornsby Chiropractor.", "n": 2},
+         "caption": "Original editorial illustration for Hornsby Chiropractor.",
+         "width": 1536, "height": 1024, "n": 2},
     ]
     chrome = extract_chrome(BLOG_DIR / "lumbar-disc-injury-management" / "index.html")
     assert chrome.strip(), "Chrome extraction produced empty output"
@@ -1222,13 +1713,18 @@ def dry_run() -> int:
                 "og tags": 'property="og:title"' in text,
                 "BlogPosting JSON-LD": '"@type": "BlogPosting"' in text,
                 "FAQPage JSON-LD": '"@type": "FAQPage"' in text,
+                "Australian language metadata": '"inLanguage": "en-AU"' in text,
+                "visible clinician byline": "Andy Lee, Chiropractor" in text,
                 "site header copied": 'class="site-header"' in text,
                 "mobile menu copied": 'class="mobile-menu"' in text,
                 "footer present": "<footer>" in text,
                 "post-figure structure": '<figure class="post-figure">' in text,
                 "figcaption present": "<figcaption>" in text,
                 "illustration caption present": "Original editorial illustration" in text,
-                "generated image inserted": "/assets/blog-images/dry-run-test-post-illustration-" in text,
+                "WebP image inserted": "/assets/blog-images/dry-run-test-post-illustration-" in text and ".webp" in text,
+                "image dimensions": 'width="1536" height="1024"' in text,
+                "first image prioritised": 'loading="eager" fetchpriority="high"' in text,
+                "related articles": 'class="related-posts"' in text,
                 "disclaimer": "general information only" in text,
             }
             for name, passed in checks.items():
@@ -1237,9 +1733,14 @@ def dry_run() -> int:
                 print("DRY RUN FAILED: some template checks did not pass")
                 return 1
         elif path.name == "index.html" and path.parent == BLOG_DIR:
-            ok = 'href="/blog/dry-run-test-post/"' in text
-            print(f"  [{'OK' if ok else 'FAIL'}] new blog card prepended to listing")
-            if not ok:
+            listing_checks = {
+                "new blog card prepended": 'href="/blog/dry-run-test-post/"' in text,
+                "listing OG metadata": 'property="og:title"' in text,
+                "one Blog JSON-LD schema": text.count('"@type": "Blog"') == 1,
+            }
+            for name, passed in listing_checks.items():
+                print(f"  [{'OK' if passed else 'FAIL'}] {name}")
+            if not all(listing_checks.values()):
                 return 1
         else:
             ok = f"/blog/{article['slug']}/" in text
@@ -1335,7 +1836,16 @@ def main() -> int:
         try:
             return dry_run()
         finally:
-            pass
+            import shutil
+
+            shutil.rmtree(BLOG_DIR / "dry-run-test-post", ignore_errors=True)
+            _restore_listing(BLOG_DIR / "index.html")
+            _restore_sitemap(REPO_ROOT / "sitemap.xml")
+    if REFRESH_SEO:
+        changed = refresh_existing_related_posts()
+        refresh_blog_index_schema()
+        log(f"SEO refresh complete: related blocks updated on {changed} post(s).")
+        return 0
     if SCHEDULED_RUN and not scheduled_publish_due():
         github_output = os.environ.get("GITHUB_OUTPUT", "")
         if github_output:

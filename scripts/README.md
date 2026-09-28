@@ -15,14 +15,19 @@ GitHub Actions가 매일 발행 시점을 확인하고, 마지막 글로부터 3
 
 1. **주제 선정** — workflow 입력에 topic이 없으면 기존 `blog/` 폴더 목록을 읽어
    중복되지 않는 새 주제를 OpenAI에게 추천받습니다.
-2. **글 생성** — `gpt-5.6`이 900~1400단어 영문 글을 JSON으로 반환합니다. AI 상투어,
+2. **글 생성** — `gpt-5.6`이 1100~1450단어 영문 글을 JSON으로 반환합니다. 핵심 검색어를
+   제목·짧은 URL·메타 설명·첫 문단·관련 H2에 자연스럽게 배치하고, 기존 글 전체에서 주제와
+   가까운 내부 링크 후보를 골라 연결합니다. AI 상투어,
    과장된 공감 문구, 꾸며낸 환자 사례와 임상 경험, 지나치게 정돈된 문장을 금지하며 발행 전
-   금칙어·분량 검사를 통과해야 합니다. 의학적 사실에는 신뢰 가능한 출처 링크가 필요합니다.
+   문체·키워드 배치·메타 길이·링크 검사를 통과해야 합니다. 의학적 사실에는 신뢰 가능한 출처
+   링크가 필요합니다.
 3. **이미지** — `gpt-image-2`가 글 내용에 맞는 서로 다른 손그림 2D 편집 삽화 2장을 만들고
-   `assets/blog-images/{slug}-illustration-{n}.png`에 저장합니다. 광택 있는 3D 렌더링,
+   압축 WebP(`output_compression=82`)로 `assets/blog-images/{slug}-illustration-{n}.webp`에
+   저장합니다. 광택 있는 3D 렌더링,
    부자연스러운 신체, 글자·로고·워터마크·과장된 통증 효과를 프롬프트에서 금지합니다.
 4. **발행** — `blog/{slug}/index.html` 생성(기존 포스트의 헤더/nav/모바일메뉴/footer 마크업 재사용),
-   `blog/index.html` 목록 맨 앞에 새 카드 삽입, `sitemap.xml` 갱신(없으면 생성).
+   관련 글 3개 연결, `blog/index.html` 목록과 `Blog` 구조화 데이터 갱신, `sitemap.xml` 갱신
+   (없으면 생성).
 5. **알림** — 성공/실패 리포트를 Telegram으로 전송합니다.
 
 ## GitHub Secrets 설정
@@ -49,8 +54,8 @@ CLI로도 가능: `gh workflow run daily-blog.yml -f topic="best desk setup for 
 기본값은 글 `gpt-5.6`, 이미지 `gpt-image-2`입니다. 바꾸려면:
 
 - 저장소 Settings → Secrets and variables → Actions → **Variables** 탭에
-  `OPENAI_MODEL`, `OPENAI_IMAGE_MODEL`, `OPENAI_IMAGE_SIZE`,
-  `OPENAI_IMAGE_QUALITY` 변수를 추가하면 워크플로우가 그 값을 사용합니다.
+  `OPENAI_MODEL`, `OPENAI_IMAGE_MODEL`, `OPENAI_IMAGE_SIZE`, `OPENAI_IMAGE_QUALITY`,
+  `OPENAI_IMAGE_FORMAT`, `OPENAI_IMAGE_COMPRESSION` 변수를 추가하면 워크플로우가 그 값을 사용합니다.
 - 또는 `.github/workflows/daily-blog.yml`의 기본값을 수정합니다.
 
 ## 로컬 테스트 (네트워크 호출 없음)
@@ -62,6 +67,12 @@ python scripts/generate_blog.py --dry-run
 
 샘플 데이터로 템플릿 조립·파일 쓰기·sitemap 갱신 로직을 검증하고,
 검증 후 생성된 임시 파일은 자동 삭제됩니다.
+
+기존 글의 관련 글 블록과 블로그 목록 구조화 데이터만 다시 계산하려면 API 키 없이 실행합니다:
+
+```bash
+python scripts/generate_blog.py --refresh-seo
+```
 
 실제 발행 로컬 테스트:
 
