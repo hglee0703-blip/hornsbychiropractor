@@ -61,6 +61,9 @@ jobs:
           OPENAI_IMAGE_QUALITY: ${{ vars.OPENAI_IMAGE_QUALITY || 'medium' }}
           OPENAI_IMAGE_FORMAT: ${{ vars.OPENAI_IMAGE_FORMAT || 'webp' }}
           OPENAI_IMAGE_COMPRESSION: ${{ vars.OPENAI_IMAGE_COMPRESSION || '82' }}
+          COMFYUI_BRIDGE_URL: ${{ secrets.COMFYUI_BRIDGE_URL }}
+          COMFYUI_BRIDGE_TOKEN: ${{ secrets.COMFYUI_BRIDGE_TOKEN }}
+          COMFYUI_GENERATION_TIMEOUT: ${{ vars.COMFYUI_GENERATION_TIMEOUT || '300' }}
         run: python scripts/generate_blog.py
 
       - name: Commit and push

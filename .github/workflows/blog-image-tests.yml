@@ -1,0 +1,55 @@
+name: Blog image failover tests
+
+on:
+  push:
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/blog-image-tests.yml'
+      - '.github/workflows/daily-blog.yml'
+  pull_request:
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/blog-image-tests.yml'
+      - '.github/workflows/daily-blog.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r scripts/requirements.txt
+      - run: python -m unittest discover -s scripts -p test_blog_images.py -v
+      - run: python scripts/generate_blog.py --dry-run
+      - name: Check optional live ComfyUI connection
+        if: github.event_name == 'push'
+        env:
+          COMFYUI_BRIDGE_URL: ${{ secrets.COMFYUI_BRIDGE_URL }}
+          COMFYUI_BRIDGE_TOKEN: ${{ secrets.COMFYUI_BRIDGE_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+          url = os.environ.get('COMFYUI_BRIDGE_URL', '')
+          token = os.environ.get('COMFYUI_BRIDGE_TOKEN', '')
+          if not url or not token:
+              print('ComfyUI not configured; OpenAI fallback will be used.')
+          else:
+              try:
+                  response = requests.get(url.rstrip('/') + '/health',
+                      headers={'Authorization': 'Bearer ' + token},
+                      timeout=(5, 10), allow_redirects=False)
+                  if response.status_code == 401:
+                      raise RuntimeError('ComfyUI bridge token was rejected')
+                  if response.status_code == 200 and response.json().get('ready') is True:
+                      print('ComfyUI bridge is reachable from the GitHub runner.')
+                  else:
+                      print('ComfyUI is offline or busy; OpenAI fallback will be used.')
+              except (requests.RequestException, ValueError):
+                  print('ComfyUI bridge is unavailable; OpenAI fallback will be used.')
+          PY

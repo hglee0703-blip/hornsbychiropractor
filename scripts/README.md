@@ -1,7 +1,9 @@
 # Blog Automation — Every 3 Days
 
-GitHub Actions가 매일 발행 시점을 확인하고, 마지막 글로부터 3일이 지난 날에 OpenAI로 블로그 글과
-손그림 2D 애니메이션풍 삽화 2장을 만들어 hornsbychiropractor.com에 자동 발행합니다.
+GitHub Actions가 매일 발행 시점을 확인하고, 마지막 글로부터 3일이 지난 날에 OpenAI로 블로그 글을
+작성하고 삽화 2장을 만들어 hornsbychiropractor.com에 자동 발행합니다. 이미지는 컴퓨터의
+ComfyUI를 먼저 사용하며, 컴퓨터 꺼짐·절전·ComfyUI 미실행·GPU 사용 중·생성 오류·시간 초과 시
+기존 OpenAI 이미지 API로 자동 전환합니다.
 
 ## 파일 구성
 
@@ -9,7 +11,11 @@ GitHub Actions가 매일 발행 시점을 확인하고, 마지막 글로부터 3
 |---|---|
 | `.github/workflows/daily-blog.yml` | 매일 간격 확인 + 3일 간격 발행 + 수동 실행용 workflow_dispatch |
 | `scripts/generate_blog.py` | 전체 파이프라인 (주제 선정 → 글 생성 → 이미지 → 발행 → 텔레그램 알림) |
-| `scripts/requirements.txt` | Python 의존성 (`requests`, `tzdata`) |
+| `scripts/blog_images.py` | ComfyUI 우선 호출, OpenAI fallback, 이미지 검증 및 압축 |
+| `scripts/comfy_bridge.py` | 로컬 ComfyUI와 GitHub를 연결하는 인증된 이미지 생성 브리지 |
+| `scripts/comfy_workflow.json` | 설치된 Z-Image Turbo용 API 워크플로우 (1152×768, 8 steps) |
+| `scripts/setup_comfy_bridge.py` | Windows 로그인 자동 실행 및 GitHub 연결 설정 |
+| `scripts/requirements.txt` | Python 의존성 (`requests`, `tzdata`, `Pillow`) |
 
 ## 동작 방식
 
@@ -21,9 +27,12 @@ GitHub Actions가 매일 발행 시점을 확인하고, 마지막 글로부터 3
    과장된 공감 문구, 꾸며낸 환자 사례와 임상 경험, 지나치게 정돈된 문장을 금지하며 발행 전
    문체·키워드 배치·메타 길이·링크 검사를 통과해야 합니다. 의학적 사실에는 신뢰 가능한 출처
    링크가 필요합니다.
-3. **이미지** — `gpt-image-2`가 글 내용에 맞는 서로 다른 손그림 2D 편집 삽화 2장을 만들고
-   압축 WebP(`output_compression=82`)로 `assets/blog-images/{slug}-illustration-{n}.webp`에
-   저장합니다. 광택 있는 3D 렌더링,
+3. **이미지** — 인증된 브리지에서 로컬 ComfyUI로 글에 맞는 손그림 2D 삽화를 생성합니다.
+   로컬 생성이 불가능하면 해당 이미지부터 `gpt-image-2`로 전환하며, 다음 블로그 글에서는
+   ComfyUI를 다시 확인합니다. 브리지 설정이 없으면 기존처럼 OpenAI를 사용합니다.
+   결과를 실제 이미지로 검증한 뒤 압축 WebP(quality 82)로
+   `assets/blog-images/{slug}-illustration-{n}.webp`에 저장하며 실제 크기를 HTML에 기록합니다.
+   광택 있는 3D 렌더링,
    부자연스러운 신체, 글자·로고·워터마크·과장된 통증 효과를 프롬프트에서 금지합니다.
 4. **발행** — `blog/{slug}/index.html` 생성(기존 포스트의 헤더/nav/모바일메뉴/footer 마크업 재사용),
    관련 글 3개 연결, `blog/index.html` 목록과 `Blog` 구조화 데이터 갱신, `sitemap.xml` 갱신
@@ -39,6 +48,56 @@ GitHub Actions가 매일 발행 시점을 확인하고, 마지막 글로부터 3
 | `HORNSBYCHIROPRACTORBLOGPOSTANDIMAGE` | OpenAI Platform에서 발급한 API 키 |
 | `TELEGRAM_BOT_TOKEN` | BotFather에게 받은 봇 토큰 |
 | `TELEGRAM_CHAT_ID` | 알림을 받을 채팅 ID |
+| `COMFYUI_BRIDGE_URL` | 로컬 브리지의 HTTPS 주소 (설치 프로그램이 자동 갱신) |
+| `COMFYUI_BRIDGE_TOKEN` | 브리지 인증 토큰 (설치 프로그램이 생성·등록) |
+
+## ComfyUI 연결 (Windows, 최초 한 번)
+
+ComfyUI, 설치된 Z-Image Turbo 모델 3개(`z_image_turbo_bf16.safetensors`,
+`qwen_3_4b.safetensors`, `ae.safetensors`), Python, 로그인된 GitHub CLI(`gh`),
+`cloudflared`가 필요합니다. ComfyUI는 `http://127.0.0.1:8188`에서 실행합니다.
+
+```powershell
+python -m pip install -r scripts/requirements.txt
+python scripts/setup_comfy_bridge.py --repo hglee0703-blip/hornsbychiropractor
+```
+
+설치 프로그램은 `%LOCALAPPDATA%\HornsbyBlog\ComfyBridge`에 실행 파일·워크플로우·
+개인 설정을 저장하고 현재 사용자와 SYSTEM만 해당 폴더에 접근하도록 권한을 설정합니다.
+Windows 로그인 시 창 없이 브리지를 실행하고 GitHub Secrets를 등록합니다.
+ComfyUI 자체는 자동으로 시작하지 않으므로 평소처럼 ComfyUI를 실행해 두면 됩니다.
+포트가 다르면 `--comfy-url http://127.0.0.1:다른포트`로 설치합니다.
+
+브리지는 ComfyUI 화면과 전체 API를 공개하지 않습니다. 토큰으로 인증된 블로그 이미지 요청만
+고정 워크플로우로 처리합니다. GPU가 이미 다른 작업을 수행 중이면 OpenAI로 전환하며,
+시간 초과 시 해당 블로그의 대기 작업만 제거합니다. 실행 중인 다른 작업은 중단하지 않습니다.
+이미 실행 중인 블로그 작업은 GPU 실행이 끝날 수 있으나 그 결과를 발행하지 않습니다.
+
+Cloudflare Quick Tunnel을 사용하므로 별도 도메인 설정 없이 연결됩니다. 주소는 재시작 시
+바뀌며 브리지가 자동으로 GitHub Secret을 갱신합니다. Quick Tunnel은 가용성을 보장하지
+않으므로 터널 장애도 OpenAI fallback으로 처리합니다.
+[Cloudflare 문서](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
+
+기본 생성 제한 시간은 이미지당 300초입니다. GitHub Actions **Variables**에서
+`COMFYUI_GENERATION_TIMEOUT`을 1~900초로 변경할 수 있습니다. 연결 불가 확인은 최대
+연결 5초·응답 10초를 사용하며, 첫 실패 이후 같은 글의 나머지 이미지는 OpenAI를 바로 사용합니다.
+연결 상태와 오류 로그는 설치 폴더의 `bridge.log`에서 확인할 수 있습니다.
+
+자동 실행을 해제하려면 PowerShell에서 다음을 실행하고, 실행 중인 브리지 프로세스를 종료합니다.
+
+```powershell
+Remove-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'HornsbyBlogComfyBridge'
+```
+
+GitHub의 `COMFYUI_BRIDGE_URL` Secret도 삭제하면 모든 이미지는 OpenAI를 사용합니다.
+토큰이나 개인 설정 파일을 저장소에 올리지 마세요.
+
+실제 이미지 API 비용 없이 성공·꺼진 컴퓨터·인증 오류·생성 실패·시간 초과·이미지 손상·
+대체 API 실패·브리지 접근 제한을 확인하는 테스트:
+
+```powershell
+python -m unittest discover -s scripts -p test_blog_images.py -v
+```
 
 ## 수동 실행 (workflow_dispatch)
 

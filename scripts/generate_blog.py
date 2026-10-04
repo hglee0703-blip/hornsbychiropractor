@@ -5,13 +5,13 @@ Pipeline:
   1. Pick a topic (workflow input, or OpenAI suggests a fresh one that does not
      duplicate existing blog/ posts).
   2. Generate and quality-check a natural, reference-backed article with OpenAI.
-  3. Generate two restrained hand-drawn 2D editorial illustrations with the
-     OpenAI Image API and store compressed WebP assets.
+  3. Generate two restrained hand-drawn 2D editorial illustrations with local
+     ComfyUI first, falling back to OpenAI, and store compressed WebP assets.
   4. Write blog/{slug}/index.html reusing the existing site chrome, prepend a
      card to blog/index.html, update/create sitemap.xml.
   5. Notify via Telegram (success or failure report).
 
-Only dependency: requests.
+Dependencies: requests, Pillow, tzdata.
 
 Usage:
   python scripts/generate_blog.py            # full pipeline (needs OPENAI_API_KEY)
@@ -34,6 +34,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import svg_illustrations
+from blog_images import ComfyImageClient, generate_with_fallback
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -675,7 +676,7 @@ def generate_article(topic: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Images (OpenAI-generated hand-drawn 2D editorial illustrations)
+# Images (ComfyUI first, with OpenAI fallback)
 # ---------------------------------------------------------------------------
 
 IMAGE_STYLE_PROMPT = """Create a warm hand-drawn 2D editorial animation still for an
@@ -754,7 +755,9 @@ def build_generated_images(article: dict) -> tuple[list[dict], list[str]]:
     prompts = article.get("image_prompts") or []
     image_format = _effective_image_format()
     extension = "jpg" if image_format == "jpeg" else image_format
-    width, height = _requested_image_dimensions()
+    client = ComfyImageClient()
+    if not client.configured:
+        log("ComfyUI bridge not configured; using OpenAI illustrations.")
 
     for n, prompt_item in enumerate(prompts[:2], start=1):
         if isinstance(prompt_item, dict):
@@ -766,10 +769,13 @@ def build_generated_images(article: dict) -> tuple[list[dict], list[str]]:
         filename = f"{article['slug']}-illustration-{n}.{extension}"
         destination = ASSETS_IMG_DIR / filename
         try:
-            image_bytes = _generate_image_bytes(scene)
-            if len(image_bytes) < 10_000:
-                raise OpenAIError(f"Generated image was unexpectedly small ({len(image_bytes)} bytes)")
-            destination.write_bytes(image_bytes)
+            asset, fallback_note = generate_with_fallback(
+                scene, IMAGE_STYLE_PROMPT, _generate_image_bytes, image_format,
+                OPENAI_IMAGE_COMPRESSION, client, log,
+            )
+            if fallback_note:
+                notes.append(fallback_note)
+            destination.write_bytes(asset.content)
             images.append({
                 "ok": True,
                 "kind": "generated",
@@ -777,10 +783,11 @@ def build_generated_images(article: dict) -> tuple[list[dict], list[str]]:
                 "alt": alt or f"Hand-drawn scene about {article['title']}",
                 "caption": "Original editorial illustration for Hornsby Chiropractor.",
                 "n": n,
-                "width": width,
-                "height": height,
+                "width": asset.width,
+                "height": asset.height,
+                "provider": asset.provider,
             })
-            log(f"Generated illustration {n}: {filename}")
+            log(f"Generated illustration {n} with {asset.provider}: {filename}")
         except Exception as exc:  # noqa: BLE001
             notes.append(f"illustration {n} failed: {type(exc).__name__}: {exc}")
 
@@ -1590,7 +1597,7 @@ def run_pipeline() -> tuple[str, str]:
     wc = word_count(article["html_body"])
     log(f"Article ready: '{article['title']}' (~{wc} words, slug={slug})")
 
-    log(f"Generating hand-drawn editorial illustrations with {OPENAI_IMAGE_MODEL}...")
+    log(f"Generating illustrations: ComfyUI first, OpenAI ({OPENAI_IMAGE_MODEL}) fallback...")
     images, img_notes = build_generated_images(article)
     for note in img_notes:
         log(note)
