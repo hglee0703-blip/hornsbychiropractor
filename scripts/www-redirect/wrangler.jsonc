@@ -1,0 +1,15 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "hornsbychiropractor-www-redirect",
+  "account_id": "a473df102d2be8224fb355e8a1d676b3",
+  "main": "worker.js",
+  "compatibility_date": "2026-05-27",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "www.hornsbychiropractor.com",
+      "custom_domain": true
+    }
+  ]
+}
