@@ -917,6 +917,59 @@ body.home-screen-prompt-open .whatsapp-float {
   color: var(--muted);
 }
 
+.blog-pagination {
+  padding: 0 clamp(20px, 5vw, 72px) clamp(48px, 7vw, 80px);
+  text-align: center;
+}
+
+.blog-page-status {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.pagination-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.pagination-links a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 13px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  background: var(--surface);
+  font-weight: 700;
+}
+
+.pagination-links a:hover {
+  background: var(--soft);
+  border-color: var(--accent-dark);
+}
+
+.pagination-links a[aria-current="page"] {
+  color: #fff;
+  background: var(--navy);
+  border-color: var(--navy);
+}
+
+.pagination-links a:focus-visible {
+  outline: 3px solid var(--accent-dark);
+  outline-offset: 3px;
+}
+
+.pagination-gap {
+  padding: 0 2px;
+}
+
 .post-page {
   background: var(--surface);
 }

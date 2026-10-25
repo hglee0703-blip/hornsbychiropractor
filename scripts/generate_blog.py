@@ -8,7 +8,7 @@ Pipeline:
   3. Generate two restrained hand-drawn 2D editorial illustrations with local
      ComfyUI first, falling back to OpenAI, and store compressed WebP assets.
   4. Write blog/{slug}/index.html reusing the existing site chrome, prepend a
-     card to blog/index.html, update/create sitemap.xml.
+     rebuild the 12-post listing pages, update/create sitemap.xml.
   5. Notify via Telegram (success or failure report).
 
 Dependencies: requests, Pillow, tzdata.
@@ -17,6 +17,7 @@ Usage:
   python scripts/generate_blog.py            # full pipeline (needs OPENAI_API_KEY)
   python scripts/generate_blog.py --dry-run  # no network; tests template assembly
   python scripts/generate_blog.py --refresh-seo  # refresh schema + related links only
+  python scripts/generate_blog.py --paginate  # rebuild listing pages only; no API calls
 """
 
 import base64
@@ -62,6 +63,8 @@ POST_INTERVAL_DAYS = max(1, int(os.environ.get("POST_INTERVAL_DAYS", "3")))
 
 DRY_RUN = "--dry-run" in sys.argv
 REFRESH_SEO = "--refresh-seo" in sys.argv
+PAGINATE = "--paginate" in sys.argv
+BLOG_PAGE_SIZE = 12
 
 SYDNEY_TZ = ZoneInfo("Australia/Sydney")
 
@@ -134,7 +137,7 @@ def extract_existing_topics() -> list[str]:
     topics = []
     if BLOG_DIR.exists():
         for child in sorted(BLOG_DIR.iterdir()):
-            if child.is_dir():
+            if child.is_dir() and child.name != "page" and (child / "index.html").is_file():
                 topics.append(child.name)
     return topics
 
@@ -1410,9 +1413,9 @@ def write_post_page(article: dict, images: list[dict], chrome: str) -> Path:
     return out_file
 
 
-def build_blog_index_jsonld() -> str:
+def build_blog_index_jsonld(records: list[dict] | None = None, page_number: int = 1) -> str:
     posts = []
-    for item in extract_post_catalog():
+    for item in extract_post_catalog() if records is None else records:
         post = {
             "@type": "BlogPosting",
             "headline": item["title"],
@@ -1428,8 +1431,8 @@ def build_blog_index_jsonld() -> str:
     data = {
         "@context": "https://schema.org",
         "@type": "Blog",
-        "@id": f"{SITE_DOMAIN}/blog/#blog",
-        "url": f"{SITE_DOMAIN}/blog/",
+        "@id": f"{SITE_DOMAIN}{blog_listing_url(page_number)}#blog",
+        "url": f"{SITE_DOMAIN}{blog_listing_url(page_number)}",
         "name": BLOG_NAME,
         "description": BLOG_DESCRIPTION,
         "inLanguage": "en-AU",
@@ -1448,47 +1451,167 @@ def build_blog_index_jsonld() -> str:
     return json.dumps(data, indent=2, ensure_ascii=False)
 
 
-def _upsert_blog_index_schema(page: str) -> str:
-    schema = build_blog_index_jsonld()
+def _upsert_blog_index_schema(
+    page: str, records: list[dict] | None = None, page_number: int = 1,
+) -> str:
+    schema = build_blog_index_jsonld(records, page_number)
     block = f'    <script id="blog-schema" type="application/ld+json">\n{schema}\n    </script>'
     pattern = re.compile(
         r"\s*<script\b[^>]*id=[\"']blog-schema[\"'][^>]*>.*?</script>",
         flags=re.IGNORECASE | re.DOTALL,
     )
     if pattern.search(page):
-        return pattern.sub("\n" + block, page, count=1)
+        return pattern.sub(lambda _match: "\n" + block, page, count=1)
     return page.replace("  </head>", block + "\n  </head>", 1)
 
 
 def refresh_blog_index_schema() -> Path:
-    listing = BLOG_DIR / "index.html"
-    page = listing.read_text(encoding="utf-8")
-    listing.write_text(_upsert_blog_index_schema(page), encoding="utf-8")
-    return listing
+    return rebuild_blog_listing()
 
 
 def prepend_blog_card(article: dict) -> Path:
-    listing = BLOG_DIR / "index.html"
-    text = listing.read_text(encoding="utf-8")
-    marker = '<section class="blog-list"'
-    idx = text.find(marker)
-    if idx == -1:
-        raise RuntimeError("Could not find blog-list section in blog/index.html")
-    tag_end = text.find(">", idx) + 1
-    # Skip past the aria-label attribute close if it's part of the same tag.
-    while text.find(">", idx, tag_end - 1) != -1 and False:
-        break
-    card = (
-        f'\n        <a class="blog-card" href="/blog/{article["slug"]}/">\n'
+    return rebuild_blog_listing(article)
+
+
+def blog_listing_url(page_number: int) -> str:
+    return "/blog/" if page_number == 1 else f"/blog/page/{page_number}/"
+
+
+def _numbered_blog_listings() -> list[Path]:
+    return sorted(
+        (path for path in BLOG_DIR.glob("page/*/index.html") if path.parent.name.isdigit()),
+        key=lambda path: int(path.parent.name),
+    )
+
+
+def _blog_card(article: dict) -> str:
+    return (
+        f'<a class="blog-card" href="/blog/{article["slug"]}/">\n'
         f'          <p class="eyebrow">{html.escape(article["category"])}</p>\n'
         f"          <h2>{html.escape(article['title'])}</h2>\n"
         f"          <p>\n"
-        f"            {html.escape(clamp_meta(article['intro_summary'], 200))}\n"
+        f"            {html.escape(clamp_meta(article.get('intro_summary', article.get('description', '')), 200))}\n"
         f"          </p>\n"
         f"        </a>"
     )
-    new_text = _upsert_blog_index_schema(text[:tag_end] + card + text[tag_end:])
-    listing.write_text(new_text, encoding="utf-8")
+
+
+def _blog_pagination(page_number: int, page_count: int, total: int) -> str:
+    first = (page_number - 1) * BLOG_PAGE_SIZE + 1 if total else 0
+    last = min(page_number * BLOG_PAGE_SIZE, total)
+    lines = [
+        '      <!-- blog-pagination:start -->',
+        '      <div class="blog-pagination">',
+        f'        <p class="blog-page-status">Showing {first}–{last} of {total} articles · Page {page_number} of {page_count}</p>',
+    ]
+    if page_count > 1:
+        lines.append('        <nav class="pagination-links" aria-label="Blog pagination">')
+        if page_number > 1:
+            lines.append(f'          <a href="{blog_listing_url(page_number - 1)}" rel="prev">Previous</a>')
+        numbers = sorted({1, page_count} | set(range(max(1, page_number - 1), min(page_count, page_number + 1) + 1)))
+        if page_count <= 7:
+            numbers = list(range(1, page_count + 1))
+        previous = 0
+        for number in numbers:
+            if previous and number > previous + 1:
+                lines.append('          <span class="pagination-gap" aria-hidden="true">…</span>')
+            current = ' aria-current="page"' if number == page_number else ''
+            lines.append(f'          <a href="{blog_listing_url(number)}" aria-label="Page {number}"{current}>{number}</a>')
+            previous = number
+        if page_number < page_count:
+            lines.append(f'          <a href="{blog_listing_url(page_number + 1)}" rel="next">Next</a>')
+        lines.append('        </nav>')
+    lines.extend(['      </div>', '      <!-- blog-pagination:end -->'])
+    return "\n".join(lines)
+
+
+def _sync_listing_sitemap(page_count: int, changed_urls: set[str]) -> None:
+    sitemap = REPO_ROOT / "sitemap.xml"
+    if sitemap.exists():
+        text = sitemap.read_text(encoding="utf-8")
+    else:
+        urls = [f"{SITE_DOMAIN}{path}" for path in ("/", "/services/", "/directions/")]
+        urls.extend(item["canonical"] for item in extract_post_catalog())
+        text = SITEMAP_HEADER + "".join(f"  <url><loc>{url}</loc></url>\n" for url in urls) + SITEMAP_FOOTER
+    listing_pattern = re.compile(
+        r"\s*<url>\s*<loc>" + re.escape(SITE_DOMAIN) + r"(/blog/(?:page/\d+/)?)</loc>.*?</url>",
+        flags=re.DOTALL,
+    )
+    old_dates = {}
+    for match in listing_pattern.finditer(text):
+        date = re.search(r"<lastmod>(.*?)</lastmod>", match.group(0))
+        old_dates[match.group(1)] = date.group(1) if date else ""
+    text = listing_pattern.sub("", text)
+    entries = []
+    for number in range(1, page_count + 1):
+        url = blog_listing_url(number)
+        date = sydney_today() if url in changed_urls else old_dates.get(url, "")
+        lastmod = f"\n    <lastmod>{date}</lastmod>" if date else ""
+        entries.append(f"  <url>\n    <loc>{SITE_DOMAIN}{url}</loc>{lastmod}\n  </url>\n")
+    text = text.replace("</urlset>", "".join(entries) + "</urlset>")
+    if not sitemap.exists() or sitemap.read_text(encoding="utf-8") != text:
+        sitemap.write_text(text, encoding="utf-8")
+
+
+def rebuild_blog_listing(article: dict | None = None) -> Path:
+    """Reflow published articles while preserving curated listing copy and chrome."""
+    listing = BLOG_DIR / "index.html"
+    template = listing.read_text(encoding="utf-8")
+    section = re.compile(r'(<section\b[^>]*class="blog-list"[^>]*>).*?</section>', re.DOTALL)
+    if not section.search(template):
+        raise RuntimeError("Could not find blog-list section in blog/index.html")
+    catalog = {item["slug"]: item for item in extract_post_catalog()}
+    cards = {}
+    if article:
+        if article["slug"] not in catalog:
+            raise RuntimeError("Write the article before rebuilding its listing")
+        cards[article["slug"]] = _blog_card(article)
+    for path in [listing, *_numbered_blog_listings()]:
+        source = path.read_text(encoding="utf-8")
+        for card in re.findall(r'<a\b[^>]*class="blog-card"[^>]*>.*?</a>', source, re.DOTALL):
+            slug = re.search(r'href="/blog/([^/]+)/"', card)
+            if slug and slug.group(1) in catalog:
+                cards.setdefault(slug.group(1), card)
+    # Keep editorial order: some legacy pages expose an updated date in <time>.
+    # The explicitly published article is already first; only backfill missing cards.
+    slugs = list(cards)
+    for slug, item in catalog.items():
+        if slug not in cards:
+            cards[slug] = _blog_card(item)
+            position = next(
+                (index for index, current in enumerate(slugs) if catalog[current]["date"] < item["date"]),
+                len(slugs),
+            )
+            slugs.insert(position, slug)
+    page_count = max(1, (len(slugs) + BLOG_PAGE_SIZE - 1) // BLOG_PAGE_SIZE)
+    template = re.sub(r"\s*<!-- blog-pagination:start -->.*?<!-- blog-pagination:end -->", "", template, flags=re.DOTALL)
+    title = re.search(r"<title>(.*?)</title>", template, re.DOTALL).group(1)
+    generated = set()
+    changed_urls = set()
+    for number in range(1, page_count + 1):
+        page_slugs = slugs[(number - 1) * BLOG_PAGE_SIZE:number * BLOG_PAGE_SIZE]
+        content = "\n".join("        " + cards[slug] for slug in page_slugs)
+        page = section.sub(lambda match: match.group(1) + "\n" + content + "\n      </section>", template, count=1)
+        page = page.replace("    </main>", _blog_pagination(number, page_count, len(slugs)) + "\n    </main>", 1)
+        canonical = f"{SITE_DOMAIN}{blog_listing_url(number)}"
+        page = re.sub(r'(<link\b[^>]*rel="canonical"[^>]*href=")[^"]*(")', lambda match: match.group(1) + canonical + match.group(2), page)
+        page = re.sub(r'(<meta\b[^>]*property="og:url"[^>]*content=")[^"]*(")', lambda match: match.group(1) + canonical + match.group(2), page)
+        if number > 1:
+            page_title = f"{title} — Page {number}"
+            page = page.replace(f"<title>{title}</title>", f"<title>{page_title}</title>", 1)
+            page = re.sub(r'(<meta\b[^>]*(?:property="og:title"|name="twitter:title")[^>]*content=")[^"]*(")', lambda match: match.group(1) + page_title + match.group(2), page)
+        page = _upsert_blog_index_schema(page, [catalog[slug] for slug in page_slugs], number)
+        output = listing if number == 1 else BLOG_DIR / "page" / str(number) / "index.html"
+        generated.add(output)
+        if not output.exists() or output.read_text(encoding="utf-8") != page:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(page, encoding="utf-8")
+            changed_urls.add(blog_listing_url(number))
+    for obsolete in set(_numbered_blog_listings()) - generated:
+        obsolete.unlink()
+        if not any(obsolete.parent.iterdir()):
+            obsolete.parent.rmdir()
+    _sync_listing_sitemap(page_count, changed_urls)
     return listing
 
 
@@ -1587,7 +1710,7 @@ def run_pipeline() -> tuple[str, str]:
     base_slug = slugify(article["slug"] or article["title"])
     slug = base_slug
     n = 2
-    while slug in existing and (BLOG_DIR / slug).exists():
+    while slug == "page" or (slug in existing and (BLOG_DIR / slug).exists()):
         slug = f"{base_slug}-{n}"
         n += 1
     if slug != base_slug:
@@ -1767,6 +1890,8 @@ def dry_run() -> int:
 
 _LISTING_BACKUP = None
 _SITEMAP_BACKUP = None
+_PAGINATION_BACKUP = {}
+_PAGINATION_DIRS_BACKUP = set()
 
 
 def _extract_article_keywords(article: dict) -> set[str]:
@@ -1816,28 +1941,44 @@ def _is_reference_relevant(ref_title: str, ref_abstract: str, article_keywords: 
 
 
 def _snapshot_before_dry_run() -> None:
-    global _LISTING_BACKUP, _SITEMAP_BACKUP
+    global _LISTING_BACKUP, _SITEMAP_BACKUP, _PAGINATION_BACKUP, _PAGINATION_DIRS_BACKUP
     listing = BLOG_DIR / "index.html"
     sitemap = REPO_ROOT / "sitemap.xml"
-    _LISTING_BACKUP = listing.read_text(encoding="utf-8") if listing.exists() else None
-    _SITEMAP_BACKUP = sitemap.read_text(encoding="utf-8") if sitemap.exists() else None
+    _LISTING_BACKUP = listing.read_bytes() if listing.exists() else None
+    _SITEMAP_BACKUP = sitemap.read_bytes() if sitemap.exists() else None
+    _PAGINATION_BACKUP = {path: path.read_bytes() for path in _numbered_blog_listings()}
+    _PAGINATION_DIRS_BACKUP = {path for path in BLOG_DIR.glob("page/*") if path.is_dir()}
+    if (BLOG_DIR / "page").exists():
+        _PAGINATION_DIRS_BACKUP.add(BLOG_DIR / "page")
 
 
 def _restore_listing(listing: Path) -> None:
     if _LISTING_BACKUP is not None:
-        listing.write_text(_LISTING_BACKUP, encoding="utf-8")
+        listing.write_bytes(_LISTING_BACKUP)
     else:  # pragma: no cover
         listing.unlink(missing_ok=True)
+    for path in set(_numbered_blog_listings()) - set(_PAGINATION_BACKUP):
+        path.unlink()
+    for path, contents in _PAGINATION_BACKUP.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(contents)
+    for directory in [*BLOG_DIR.glob("page/*"), BLOG_DIR / "page"]:
+        if directory.is_dir() and directory not in _PAGINATION_DIRS_BACKUP and not any(directory.iterdir()):
+            directory.rmdir()
 
 
 def _restore_sitemap(sitemap: Path) -> None:
     if _SITEMAP_BACKUP is not None:
-        sitemap.write_text(_SITEMAP_BACKUP, encoding="utf-8")
+        sitemap.write_bytes(_SITEMAP_BACKUP)
     else:  # pragma: no cover
         sitemap.unlink(missing_ok=True)
 
 
 def main() -> int:
+    if PAGINATE:
+        rebuild_blog_listing()
+        log(f"Blog listing rebuilt with up to {BLOG_PAGE_SIZE} articles per page.")
+        return 0
     if DRY_RUN:
         _snapshot_before_dry_run()
         try:

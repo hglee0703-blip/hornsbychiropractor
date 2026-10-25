@@ -35,7 +35,8 @@ ComfyUI를 먼저 사용하며, 컴퓨터 꺼짐·절전·ComfyUI 미실행·GPU
    광택 있는 3D 렌더링,
    부자연스러운 신체, 글자·로고·워터마크·과장된 통증 효과를 프롬프트에서 금지합니다.
 4. **발행** — `blog/{slug}/index.html` 생성(기존 포스트의 헤더/nav/모바일메뉴/footer 마크업 재사용),
-   관련 글 3개 연결, `blog/index.html` 목록과 `Blog` 구조화 데이터 갱신, `sitemap.xml` 갱신
+   관련 글 3개 연결, 12개씩 나눈 `blog/index.html` 및 `blog/page/N/index.html` 목록과
+   각 페이지에 표시되는 글의 `Blog` 구조화 데이터 갱신, `sitemap.xml` 갱신
    (없으면 생성).
 5. **알림** — 성공/실패 리포트를 Telegram으로 전송합니다.
 
@@ -133,6 +134,18 @@ python scripts/generate_blog.py --dry-run
 python scripts/generate_blog.py --refresh-seo
 ```
 
+블로그 목록만 다시 나누려면 API 호출 없이 다음 명령을 실행합니다:
+
+```bash
+python scripts/generate_blog.py --paginate
+python -m unittest discover -s scripts -p test_blog_pagination.py -v
+```
+
+새 글을 발행할 때도 전체 목록을 최신순으로 12개씩 자동 재구성합니다. 기존 카드의 제목과
+소개 문구를 유지하며, 각 목록 페이지에 고유 주소·canonical·이전/다음 링크를 제공합니다.
+글 수가 줄면 남는 번호 페이지와 사이트맵 항목도 정리합니다. Dry-run은 모든 목록 페이지와
+사이트맵을 원래 내용으로 복원합니다.
+
 실제 발행 로컬 테스트:
 
 ```bash
@@ -143,4 +156,4 @@ python scripts/generate_blog.py
 ## 주의
 
 - `worker.js`, `index.html`(홈), 기존 서비스 페이지 등 사이트 코드는 이 자동화가 절대 수정하지 않습니다.
-  변경되는 파일: `blog/{new-slug}/`, `blog/index.html`, `sitemap.xml`, `assets/blog-images/`.
+  변경되는 파일: `blog/{new-slug}/`, `blog/index.html`, `blog/page/`, `sitemap.xml`, `assets/blog-images/`.
