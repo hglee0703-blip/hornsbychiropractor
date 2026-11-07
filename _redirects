@@ -2,13 +2,14 @@
 /free-health-info/ /blog/ 301
 /free-health-info/page/2/ /blog/ 301
 /free-health-info/page/3/ /blog/ 301
-/author/hglee0703/ /blog/ 301
+/author/hglee0703/ /about/ 301
 
 # Legacy pages with a direct equivalent on the current site.
 /in-depth-research-of-disc-protrusion-herniated-disc-sciatica-cortisone-injection-and-disc-surgeries/ /blog/disc-protrusion-herniated-disc-sciatica-cortisone-injection-surgery/ 301
 /elementor-884/ /directions/ 301
-/services/headaches-treatment-hornsby/ /services/#headaches 301
-/acute-adhesive-capsulitis-of-the-shoulder/ /services/#frozen-shoulder 301
-/case-review-frozen-shoulder/ /services/#frozen-shoulder 301
-/services/frozen-shoulder-treatment-hornsby/ /services/#frozen-shoulder 301
-/services/degenerative-disc-treatment-in-hornsby/ /blog/disc-protrusion-herniated-disc-sciatica-cortisone-injection-surgery/ 301
+/acute-adhesive-capsulitis-of-the-shoulder/ /services/frozen-shoulder-treatment-hornsby/ 301
+/case-review-frozen-shoulder/ /services/frozen-shoulder-treatment-hornsby/ 301
+/services/degenerative-disc-treatment-in-hornsby/ /services/disc-pain-treatment-hornsby/ 301
+
+# Legacy condition pages restored as real pages (no redirect needed):
+# /services/headaches-treatment-hornsby/ and /services/frozen-shoulder-treatment-hornsby/
