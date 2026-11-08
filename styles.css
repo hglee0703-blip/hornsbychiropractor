@@ -30,6 +30,7 @@ body {
 img {
   display: block;
   max-width: 100%;
+  height: auto;
 }
 
 a {
@@ -1432,13 +1433,6 @@ body.home-screen-prompt-open .whatsapp-float {
     min-height: 300px;
   }
 
-  .map-panel iframe {
-    display: none;
-  }
-
-  .map-fallback {
-    display: block;
-  }
 
   .mobile-call {
     position: fixed;
@@ -1538,10 +1532,17 @@ body.home-screen-prompt-open .whatsapp-float {
 }
 
 .kakao-float {
+  bottom: calc(96px + env(safe-area-inset-bottom, 0px));
   color: #3c1e1e;
   background: #fee500;
 }
 
 .kakao-float:hover {
   background: #f2d900;
+}
+
+@media (max-width: 680px) {
+  .kakao-float {
+    bottom: calc(150px + env(safe-area-inset-bottom, 0px));
+  }
 }
