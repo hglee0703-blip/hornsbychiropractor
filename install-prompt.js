@@ -66,11 +66,21 @@
   }
 
   function showManualInstructions() {
-    title.textContent = isChrome ? "Add to Home Screen in Chrome" : "Add to Home Screen in Safari";
-    copy.textContent = "Follow these steps to keep Hornsby Chiropractor one tap away:";
-    const instructions = isIOS
-      ? ["Tap the Share button in the browser toolbar.", "Choose Add to Home Screen.", "Tap Add to confirm."]
-      : ["Open the Chrome menu (⋮).", "Choose Add to home screen or Install app.", "Tap Install to confirm."];
+    const isKorean = document.documentElement.lang === "ko";
+    if (isKorean) {
+      title.textContent = isChrome ? "Chrome에서 홈 화면에 추가하기" : "Safari에서 홈 화면에 추가하기";
+      copy.textContent = "아래 순서대로 하시면 Hornsby Chiropractor를 바로 열 수 있습니다:";
+    } else {
+      title.textContent = isChrome ? "Add to Home Screen in Chrome" : "Add to Home Screen in Safari";
+      copy.textContent = "Follow these steps to keep Hornsby Chiropractor one tap away:";
+    }
+    const instructions = isKorean
+      ? isIOS
+        ? ["브라우저 도구 막대의 공유 버튼을 누르세요.", "'홈 화면에 추가'를 선택하세요.", "'추가'를 눌러 완료하세요."]
+        : ["Chrome 메뉴(⋮)를 여세요.", "'홈 화면에 추가' 또는 '앱 설치'를 선택하세요.", "'설치'를 눌러 완료하세요."]
+      : isIOS
+        ? ["Tap the Share button in the browser toolbar.", "Choose Add to Home Screen.", "Tap Add to confirm."]
+        : ["Open the Chrome menu (⋮).", "Choose Add to home screen or Install app.", "Tap Install to confirm."];
 
     steps.replaceChildren(
       ...instructions.map((instruction) => {
@@ -80,7 +90,7 @@
       }),
     );
     steps.hidden = false;
-    addButton.textContent = "Got it";
+    addButton.textContent = isKorean ? "확인" : "Got it";
     dismissButton.hidden = true;
     showingInstructions = true;
   }
