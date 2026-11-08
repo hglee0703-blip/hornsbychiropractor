@@ -12,12 +12,49 @@
 
   if (!timesContainer || !form) return;
 
-  const timeFormatter = new Intl.DateTimeFormat("en-AU", {
+  // The Korean home page uses the same widget; show its messages in Korean.
+  const isKorean = document.documentElement.lang === "ko";
+  const locale = isKorean ? "ko-KR" : "en-AU";
+  const text = isKorean
+    ? {
+        loading: "예약 가능한 시간을 불러오는 중...",
+        checking: "오늘 일정을 확인하는 중...",
+        loadFailed: "예약 가능한 시간을 불러오지 못했습니다. 다시 시도해 주세요.",
+        noSlots: '오늘은 온라인으로 예약 가능한 시간이 없습니다. <a href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">다른 날짜 확인하기</a>.',
+        select: "시간을 선택하세요:",
+        confirming: "확인 중...",
+        creating: "시간을 확인하고 예약을 만드는 중...",
+        bookFailed: "예약을 확정하지 못했습니다. 다시 시도해 주세요.",
+        slotTaken: "선택하신 시간에 예약할 수 없습니다. 방금 마감되었을 수 있으니 다른 시간을 선택해 주세요.",
+        invalid: "입력하신 정보를 확인해 주세요.",
+        confirm: "예약 확정",
+      }
+    : {
+        loading: "Loading available appointments...",
+        checking: "Checking today's calendar...",
+        loadFailed: "Available times could not be loaded. Please try again.",
+        noSlots: 'There are no online appointments left today. <a href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Check another date</a>.',
+        select: "Select a time:",
+        confirming: "Confirming...",
+        creating: "Checking the time and creating your appointment...",
+        bookFailed: "The appointment could not be confirmed. Please try again.",
+        confirm: "Confirm appointment",
+      };
+
+  // English pages show the server's own message; Korean pages show a Korean one.
+  function errorMessage(response, data, fallback) {
+    if (!isKorean) return (data && data.message) || fallback;
+    if (response && response.status === 409) return text.slotTaken;
+    if (response && response.status === 400) return text.invalid;
+    return fallback;
+  }
+
+  const timeFormatter = new Intl.DateTimeFormat(locale, {
     timeZone: "Australia/Sydney",
     hour: "numeric",
     minute: "2-digit",
   });
-  const dateFormatter = new Intl.DateTimeFormat("en-AU", {
+  const dateFormatter = new Intl.DateTimeFormat(locale, {
     timeZone: "Australia/Sydney",
     weekday: "long",
     day: "numeric",
@@ -54,8 +91,8 @@
     setLoading(true);
     showTimes();
     timesContainer.replaceChildren();
-    status.textContent = "Loading available appointments...";
-    dateLabel.textContent = "Checking today's calendar...";
+    status.textContent = text.loading;
+    dateLabel.textContent = text.checking;
 
     try {
       const response = await fetch("/api/availability", {
@@ -64,17 +101,19 @@
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || "Available times could not be loaded.");
+        throw new Error(errorMessage(response, data, text.loadFailed));
       }
 
-      dateLabel.textContent = data.displayDate;
+      dateLabel.textContent = isKorean && data.date
+        ? dateFormatter.format(new Date(`${data.date}T12:00:00Z`))
+        : data.displayDate;
 
       if (!data.slots.length) {
-        status.innerHTML = 'There are no online appointments left today. <a href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Check another date</a>.';
+        status.innerHTML = text.noSlots;
         return;
       }
 
-      status.textContent = "Select a time:";
+      status.textContent = text.select;
       data.slots.forEach((slot) => {
         const button = document.createElement("button");
         button.type = "button";
@@ -84,7 +123,7 @@
         timesContainer.append(button);
       });
     } catch (error) {
-      status.textContent = error.message || "Available times could not be loaded. Please try again.";
+      status.textContent = error.message || text.loadFailed;
     } finally {
       setLoading(false);
     }
@@ -97,8 +136,8 @@
     const submitButton = form.querySelector(".booking-submit");
     const formData = new FormData(form);
     submitButton.disabled = true;
-    submitButton.textContent = "Confirming...";
-    formStatus.textContent = "Checking the time and creating your appointment...";
+    submitButton.textContent = text.confirming;
+    formStatus.textContent = text.creating;
 
     try {
       const response = await fetch("/api/book", {
@@ -120,7 +159,7 @@
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || "The appointment could not be confirmed.");
+        throw new Error(errorMessage(response, data, text.bookFailed));
       }
 
       form.hidden = true;
@@ -128,10 +167,10 @@
       successTime.textContent = `${dateFormatter.format(new Date(data.startsAt))}, ${timeFormatter.format(new Date(data.startsAt))}`;
       form.reset();
     } catch (error) {
-      formStatus.textContent = error.message || "The appointment could not be confirmed. Please try again.";
+      formStatus.textContent = error.message || text.bookFailed;
     } finally {
       submitButton.disabled = false;
-      submitButton.textContent = "Confirm appointment";
+      submitButton.textContent = text.confirm;
     }
   });
 

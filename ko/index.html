@@ -157,9 +157,16 @@
         ]
       }
     </script>
+    <meta name="theme-color" content="#07345f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Hornsby Chiro">
+    <link rel="manifest" href="/site.webmanifest">
+    <link rel="apple-touch-icon" href="/assets/icon-180.png">
     <link rel="stylesheet" href="/styles.css">
     <script src="/whatsapp.js" defer></script>
     <script src="/kakao.js" defer></script>
+    <script src="/booking.js" defer></script>
+    <script src="/install-prompt.js" defer></script>
     <script src="/openai-pixel.js" defer></script>
   </head>
   <body>
@@ -228,6 +235,85 @@
         </div>
       </section>
 
+      <section id="book-today" class="booking-section" aria-labelledby="booking-title">
+        <div class="booking-intro">
+          <p class="eyebrow">오늘 예약</p>
+          <h2 id="booking-title">예약 가능한 30분 진료 시간을 선택하세요.</h2>
+          <p>
+            시간을 선택하고 정보를 입력하시면
+            Aseschedule에서 바로 예약이 확정됩니다.
+          </p>
+          <a
+            class="booking-fallback"
+            href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/"
+          >
+            다른 날짜 보기
+          </a>
+        </div>
+
+        <div class="booking-panel">
+          <div class="booking-panel-header">
+            <div>
+              <span>오늘 예약 가능 시간</span>
+              <strong id="booking-date">오늘 일정을 확인하는 중...</strong>
+            </div>
+            <button id="refresh-times" class="icon-button" type="button" aria-label="예약 가능 시간 새로고침" title="예약 가능 시간 새로고침">
+              &#8635;
+            </button>
+          </div>
+
+          <div id="booking-status" class="booking-status" role="status" aria-live="polite">
+            예약 가능한 시간을 불러오는 중...
+          </div>
+          <div id="booking-times" class="booking-times" aria-label="예약 가능한 시간"></div>
+
+          <form id="booking-form" class="booking-form" hidden>
+            <div class="selected-time">
+              <span>선택한 예약</span>
+              <strong id="selected-time-label"></strong>
+              <button id="change-time" type="button">변경</button>
+            </div>
+
+            <div class="booking-fields">
+              <label>
+                이름 (First name)
+                <input name="firstName" autocomplete="given-name" maxlength="80" required>
+              </label>
+              <label>
+                성 (Last name)
+                <input name="lastName" autocomplete="family-name" maxlength="80" required>
+              </label>
+              <label>
+                이메일
+                <input name="email" type="email" autocomplete="email" maxlength="160" required>
+              </label>
+              <label>
+                휴대폰
+                <input name="phone" type="tel" autocomplete="tel" maxlength="30" required>
+              </label>
+            </div>
+
+            <label class="booking-consent">
+              <input name="consent" type="checkbox" required>
+              <span>입력한 정보로 Aseschedule에 예약을 생성하는 데 동의합니다.</span>
+            </label>
+            <label class="booking-honeypot" aria-hidden="true">
+              Website
+              <input name="website" tabindex="-1" autocomplete="off">
+            </label>
+
+            <button class="button booking-submit" type="submit">예약 확정</button>
+            <p id="booking-form-status" class="booking-form-status" role="status" aria-live="polite"></p>
+          </form>
+
+          <div id="booking-success" class="booking-success" hidden>
+            <span>예약이 확정되었습니다</span>
+            <strong id="booking-success-time"></strong>
+            <p>Aseschedule에 입력하신 정보로 확인 안내가 발송됩니다.</p>
+          </div>
+        </div>
+      </section>
+
       <section id="services" class="section">
         <div class="section-heading">
           <p class="eyebrow">진료 분야</p>
@@ -237,31 +323,36 @@
           <a class="service-card" href="/ko/services/disc-pain-treatment-hornsby/">
             <h3>디스크·좌골신경통</h3>
             <p>
-              디스크 관련 목·허리 통증과 팔이나 다리로 퍼지는 통증을 평가합니다.
+              중점 진료 분야: 팔이나 다리로 퍼지는 통증을 포함한
+              디스크 관련 목·허리 통증을 평가합니다.
             </p>
           </a>
           <a class="service-card" href="/ko/services/neck-pain-treatment-hornsby/">
-            <h3>목 통증·뻣뻣함</h3>
+            <h3>목 통증</h3>
             <p>
-              목 통증과 뻣뻣함, 팔 저림을 증상과 병력, 움직임을 바탕으로 평가하고, 적절한 치료 방법과 기대 효과, 위험성, 다른 선택지, 필요한 경우 의뢰를 상의합니다.
+              목 통증, 뻣뻣함, 움직임 문제를 평가하고
+              개별 상담 후 치료 방법을 상의합니다.
             </p>
           </a>
           <a class="service-card" href="/ko/services/lower-back-pain-treatment-hornsby/">
             <h3>허리 통증</h3>
             <p>
-              허리 증상과 움직임, 일상 활동을 살펴본 뒤 적절한 치료 방법과 개인별 계획, 필요한 경우 의뢰를 상의합니다.
+              허리 증상과 움직임을 평가하고
+              필요에 따라 개별 치료 계획이나 의뢰를 안내합니다.
             </p>
           </a>
           <a class="service-card" href="/ko/services/headaches-treatment-hornsby/">
-            <h3>두통·목 통증</h3>
+            <h3>두통</h3>
             <p>
-              목이나 어깨 증상을 동반한 두통의 양상을 평가하고, 카이로프랙틱 치료와 의학적 진료 중 무엇이 적절한지 상의합니다.
+              목이나 어깨 증상을 동반한 두통을 평가하고
+              의학적 진료가 필요한지 함께 상의합니다.
             </p>
           </a>
           <a class="service-card" href="/ko/services/frozen-shoulder-treatment-hornsby/">
-            <h3>오십견·어깨 통증</h3>
+            <h3>오십견</h3>
             <p>
-              어깨 통증, 뻣뻣함, 움직임 제한을 오십견 가능성을 포함해 평가합니다.
+              어깨 통증과 움직임 제한을 평가하고
+              치료 방법과 필요한 경우 의뢰를 상의합니다.
             </p>
           </a>
         </div>
@@ -277,7 +368,7 @@
             >
             <img
               src="/assets/treatment-room-bw.jpg"
-              alt="진료실에서 환자를 평가하는 모습"
+              alt="진료실에서 카이로프랙틱 평가를 하는 모습"
               width="2400"
               height="1600"
               loading="lazy"
@@ -289,16 +380,41 @@
           <p class="eyebrow">소개</p>
           <h2>Andy Lee 카이로프랙터</h2>
           <p>
-            Andy Lee는 매쿼리 대학교(Macquarie University)에서 카이로프랙틱 과학(Chiropractic
-            Science)을 전공했으며, 호주 카이로프랙틱 위원회에 일반 등록된 카이로프랙터입니다.
+            Andy Lee(Dr Andy H.G. Lee)는 매쿼리 대학교(Macquarie University)에서
+            카이로프랙틱 과학(Chiropractic Science)을 전공했으며, 호주 카이로프랙틱
+            위원회에 일반 등록되어 Hornsby Chiropractor에서 진료하고 있습니다.<br>
+            진료는 증상, 관련 병력, 움직임을 확인하고 결과를 설명드리는 것에서
+            시작합니다.<br>
+            적절한 치료 방법과 기대 효과, 위험성, 다른 선택지, 필요한 경우 의뢰를
+            함께 상의합니다.<br>
+            목·허리 문제, 목이나 어깨 증상을 동반한 두통, 오십견을 포함한 어깨
+            통증과 움직임 제한을 진료합니다.<br>
+            치료 적합성과 결과는 개인마다 다릅니다.
           </p>
           <p>
-            진료는 증상, 관련 병력, 움직임을 확인하고 결과를 설명드리는 것에서 시작합니다. 적절한 치료
-            방법과 기대 효과, 위험성, 다른 선택지, 필요한 경우 의뢰를 함께 상의합니다. 치료 적합성과
-            결과는 개인마다 다릅니다.
+            <a href="/ko/about/">Andy Lee와 클리닉 소개 더 보기</a>
           </p>
+        </div>
+      </section>
+
+      <section class="photo-band" aria-label="클리닉 치료 사진">
+        <picture>
+          <source type="image/webp" srcset="/assets/treatment-square-640.webp 640w" sizes="320px">
+          <img
+            src="/assets/treatment-square.jpg"
+            alt="환자에게 수기 카이로프랙틱 치료를 하는 모습"
+            width="951"
+            height="960"
+            loading="lazy"
+            decoding="async"
+          >
+        </picture>
+        <div>
+          <p class="eyebrow">치료</p>
+          <h2>차분한 진료 환경에서 받는 수기 치료.</h2>
           <p>
-            <a href="/ko/about/">Andy Lee 소개 더 보기</a>
+            통증과 움직임, 일상 기능에 도움이 필요한 분들을 위한
+            깔끔하고 전문적인 진료 환경입니다.
           </p>
         </div>
       </section>
@@ -323,7 +439,10 @@
                 decoding="async"
               >
             </picture>
-            <a class="button" href="https://www.google.com/maps/dir/?api=1&destination=Suite%204%2C%2043A%20Florence%20Street%2C%20Hornsby%20NSW%202077">
+            <a
+              class="button"
+              href="https://www.google.com/maps/dir/?api=1&destination=Suite%204%2C%2043A%20Florence%20Street%2C%20Hornsby%20NSW%202077"
+            >
               구글 지도 열기
             </a>
           </div>
@@ -358,6 +477,35 @@
     </main>
 
     <a class="mobile-call" href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">온라인 예약</a>
+
+    <div id="home-screen-prompt" class="home-screen-prompt" hidden>
+      <section
+        class="home-screen-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="home-screen-title"
+        aria-describedby="home-screen-copy"
+      >
+        <button
+          id="home-screen-close"
+          class="home-screen-close"
+          type="button"
+          aria-label="다시 보지 않기"
+        >
+          &times;
+        </button>
+        <img src="/assets/icon-192.png" alt="" width="54" height="54">
+        <div class="home-screen-content">
+          <h2 id="home-screen-title">Hornsby Chiropractor를 홈 화면에 추가할까요?</h2>
+          <p id="home-screen-copy">터치 한 번으로 다음 예약을 하실 수 있습니다.</p>
+          <ol id="home-screen-steps" class="home-screen-steps" hidden></ol>
+          <div class="home-screen-actions">
+            <button id="home-screen-add" class="button" type="button">홈 화면에 추가</button>
+            <button id="home-screen-dismiss" class="home-screen-dismiss" type="button">괜찮습니다</button>
+          </div>
+        </div>
+      </section>
+    </div>
 
     <footer>
       <div class="footer-grid">
