@@ -65,6 +65,29 @@ DRY_RUN = "--dry-run" in sys.argv
 REFRESH_SEO = "--refresh-seo" in sys.argv
 PAGINATE = "--paginate" in sys.argv
 BLOG_PAGE_SIZE = 12
+# Existing post whose header and footer are copied onto newly generated posts.
+TEMPLATE_POST = REPO_ROOT / "blog" / "lumbar-disc-injury-management" / "index.html"
+# Static pages that must always be listed when a sitemap is created from scratch.
+CORE_PAGES = (
+    "/",
+    "/services/",
+    "/services/disc-pain-treatment-hornsby/",
+    "/services/neck-pain-treatment-hornsby/",
+    "/services/lower-back-pain-treatment-hornsby/",
+    "/services/headaches-treatment-hornsby/",
+    "/services/frozen-shoulder-treatment-hornsby/",
+    "/about/",
+    "/directions/",
+    "/ko/",
+    "/ko/services/",
+    "/ko/services/disc-pain-treatment-hornsby/",
+    "/ko/services/neck-pain-treatment-hornsby/",
+    "/ko/services/lower-back-pain-treatment-hornsby/",
+    "/ko/services/headaches-treatment-hornsby/",
+    "/ko/services/frozen-shoulder-treatment-hornsby/",
+    "/ko/about/",
+    "/ko/directions/",
+)
 
 SYDNEY_TZ = ZoneInfo("Australia/Sydney")
 
@@ -97,6 +120,60 @@ RELATED_TOPIC_GROUPS = (
     {"desk", "sitting", "computer", "phone", "driving", "commuting", "train", "posture", "backpack", "standing"},
     {"exercise", "running", "weights", "lifting", "gardening", "stretch", "sport", "hip"},
     {"sleep", "sleeping", "morning", "bed", "pillow", "pregnancy"},
+)
+
+# Core topic clusters in priority order. Each one maps to a condition page so new
+# articles build topical depth around the care the clinic wants to be found for,
+# instead of drifting into unrelated body regions. "weight" sets how many articles a
+# cluster should receive relative to the others.
+CORE_TOPIC_CLUSTERS = (
+    {
+        "name": "Disc-related pain and sciatica",
+        "brief": (
+            "bulging, protruding or herniated discs, sciatica, nerve pain into an arm or leg, "
+            "understanding scan reports, and daily life or decisions about injections and surgery "
+            "with a disc problem"
+        ),
+        "keywords": (
+            "disc", "discs", "disk", "herniated", "herniation", "bulging", "protrusion",
+            "sciatica", "sciatic", "pinched nerve", "nerve pain", "radiculopathy", "degenerative",
+        ),
+        "url": "/services/disc-pain-treatment-hornsby/",
+        "label": "Disc pain and sciatica care in Hornsby",
+        "weight": 3,
+    },
+    {
+        "name": "Lower back pain",
+        "brief": "lower back pain with everyday activities, work, sleep, exercise and recovery",
+        "keywords": ("lower back", "low back", "back pain", "lumbar", "tailbone", "coccyx"),
+        "url": "/services/lower-back-pain-treatment-hornsby/",
+        "label": "Lower back pain care in Hornsby",
+        "weight": 2,
+    },
+    {
+        "name": "Neck pain and neck-related arm symptoms",
+        "brief": "neck pain and stiffness, desk and phone posture, whiplash, and neck pain with arm symptoms",
+        "keywords": ("neck", "cervical", "whiplash"),
+        "url": "/services/neck-pain-treatment-hornsby/",
+        "label": "Neck pain care in Hornsby",
+        "weight": 2,
+    },
+    {
+        "name": "Headaches with neck or shoulder symptoms",
+        "brief": "tension-type and neck-related headaches, headache triggers, and when a headache needs medical care",
+        "keywords": ("headache", "headaches", "migraine", "skull", "jaw"),
+        "url": "/services/headaches-treatment-hornsby/",
+        "label": "Headache and neck pain care in Hornsby",
+        "weight": 1,
+    },
+    {
+        "name": "Shoulder pain and frozen shoulder",
+        "brief": "frozen shoulder, shoulder stiffness, rotator cuff irritation and shoulder pain linked with the neck",
+        "keywords": ("shoulder", "shoulders", "frozen", "rotator cuff", "adhesive capsulitis"),
+        "url": "/services/frozen-shoulder-treatment-hornsby/",
+        "label": "Frozen shoulder and shoulder pain care in Hornsby",
+        "weight": 1,
+    },
 )
 
 # ---------------------------------------------------------------------------
@@ -243,20 +320,54 @@ def _rank_related_posts(query: str, exclude_slug: str = "", limit: int = 8) -> l
     return [row[2] for row in scored[:limit]]
 
 
+def _cluster_text(text: str) -> str:
+    return " " + re.sub(r"[^a-z0-9]+", " ", html.unescape(text).lower()) + " "
+
+
+def matching_topic_clusters(text: str) -> list[dict]:
+    """Core clusters whose keywords appear in the text, in priority order."""
+    haystack = _cluster_text(text)
+    return [
+        cluster
+        for cluster in CORE_TOPIC_CLUSTERS
+        if any(f" {keyword} " in haystack for keyword in cluster["keywords"])
+    ]
+
+
+def choose_focus_cluster(catalog: list[dict] | None = None) -> dict:
+    """Pick the cluster that is most under-covered relative to its weight."""
+    counts = {cluster["name"]: 0 for cluster in CORE_TOPIC_CLUSTERS}
+    for item in extract_post_catalog() if catalog is None else catalog:
+        matches = matching_topic_clusters(f"{item['slug']} {item['title']} {item.get('category', '')}")
+        if matches:
+            counts[matches[0]["name"]] += 1
+    return min(
+        CORE_TOPIC_CLUSTERS,
+        key=lambda cluster: (
+            counts[cluster["name"]] / cluster["weight"],
+            CORE_TOPIC_CLUSTERS.index(cluster),
+        ),
+    )
+
+
 def build_internal_link_hints(topic: str) -> tuple[str, set[str]]:
     """Offer only real, contextually ranked site URLs to the writing model."""
     related = _rank_related_posts(topic, limit=10)
     candidates = [
+        (cluster["url"], cluster["label"]) for cluster in matching_topic_clusters(topic)
+    ]
+    candidates.extend([
         ("/services/", "Chiropractic services and what an appointment involves"),
         ("/directions/", "Hornsby clinic location and directions"),
-        ("/#about", "About Andy Lee and Hornsby Chiropractor"),
+        ("/about/", "About Andy Lee, chiropractor at Hornsby Chiropractor"),
         (BOOKING_URL, "Online appointment booking"),
-    ]
+    ])
     candidates.extend((item["url"], item["title"]) for item in related)
     lines = "\n".join(f"- {url} : {label}" for url, label in candidates)
     instruction = (
         "Choose 2-4 genuinely relevant links from the verified candidates below. "
-        "Prioritise useful related articles and the services page. Use each URL at most once, "
+        "Prioritise the matching condition page (a /services/ URL ending in -hornsby/) when one is "
+        "listed, then useful related articles. Use each URL at most once, "
         "with descriptive anchor text. A booking link may appear once near the end only when it "
         "fits naturally; do not force a sales call to action. Use the URLs exactly as supplied.\n"
         f"{lines}"
@@ -335,11 +446,17 @@ def send_telegram(message: str) -> None:
 TOPIC_SYSTEM_PROMPT = """You are the content strategist for Hornsby Chiropractor, \
 a chiropractic clinic in Hornsby, NSW, Australia (author: Andy Lee).
 
+The clinic's central focus is disc-related neck and lower back pain, sciatica and pain \
+that travels into an arm or leg. It also sees neck pain, lower back pain, headaches with \
+neck or shoulder symptoms, and shoulder pain including frozen shoulder.
+
 Suggest ONE new blog post topic for local patients. Requirements:
 - A specific, long-tail question or how-to search phrase that a real patient would \
-type into Google (e.g. "how to sleep with lower back pain", "best desk setup for neck pain").
-- Relevant to chiropractic care: back pain, neck pain, posture, headaches, sciatica, \
-sports injuries, ergonomics, sleep and pain, exercise and recovery, etc.
+type into Google (e.g. "sitting with a herniated disc at work", "sciatica pain when getting out of bed").
+- It MUST belong to the focus cluster named at the end of this brief. Stay within the \
+clinic's core areas: disc problems and sciatica, lower back, neck, neck-related headaches \
+and the shoulder. Do NOT choose topics centred on the foot, ankle, shin, knee, hip, elbow, \
+wrist or hand, or general fitness topics without a clear link to these areas.
 - It must NOT be substantially similar to any of the already-published topics listed below.
 - Vary the symptom, activity and search intent instead of producing another minor rewrite of a common topic.
 - Use "Hornsby" only for a genuinely local-intent topic, not as a keyword added to every title.
@@ -640,7 +757,13 @@ def pick_topic(existing_slugs: list[str]) -> tuple[str, bool]:
     if TOPIC_INPUT:
         return TOPIC_INPUT, False
     existing_list = "\n".join(f"- {s}" for s in existing_slugs) or "- (none yet)"
-    prompt = TOPIC_SYSTEM_PROMPT + "\n\nAlready published topics:\n" + existing_list
+    cluster = choose_focus_cluster()
+    log(f"Focus cluster: {cluster['name']}")
+    prompt = (
+        TOPIC_SYSTEM_PROMPT
+        + "\n\nAlready published topics:\n" + existing_list
+        + f"\n\nFocus cluster for this post: {cluster['name']} ({cluster['brief']})."
+    )
     raw = openai_generate(prompt, max_output_tokens=256).strip().strip('"').strip()
     if len(raw.split()) > 15:  # sanity check
         raw = " ".join(raw.split()[:12])
@@ -1160,22 +1283,32 @@ def build_related_articles_html(article: dict, max_count: int = 3) -> str:
         exclude_slug=str(article.get("slug", "")),
         limit=max_count,
     )
-    if not related:
+    clusters = matching_topic_clusters(
+        f"{article.get('slug', '')} {article.get('title', '')} {article.get('category', '')} "
+        f"{article.get('primary_keyword', '')}"
+    )
+    if not related and not clusters:
         return ""
-    items = "\n".join(
-        f'            <li><a href="{item["url"]}">{html.escape(item["title"])}</a></li>'
-        for item in related
-    )
-    return (
-        '        <!-- related-posts:start -->\n'
-        '        <aside class="related-posts" aria-labelledby="related-articles-heading">\n'
-        '          <h2 id="related-articles-heading">Related articles</h2>\n'
-        '          <ul>\n'
-        f"{items}\n"
-        '          </ul>\n'
-        '        </aside>\n'
-        '        <!-- related-posts:end -->'
-    )
+    lines = [
+        '        <!-- related-posts:start -->',
+        '        <aside class="related-posts" aria-labelledby="related-articles-heading">',
+        '          <h2 id="related-articles-heading">Related articles</h2>',
+    ]
+    if related:
+        lines.append('          <ul>')
+        lines.extend(
+            f'            <li><a href="{item["url"]}">{html.escape(item["title"])}</a></li>'
+            for item in related
+        )
+        lines.append('          </ul>')
+    if clusters:
+        cluster = clusters[0]
+        lines.append(
+            '          <p class="related-service">At the clinic: '
+            f'<a href="{cluster["url"]}">{html.escape(cluster["label"])}</a></p>'
+        )
+    lines.extend(['        </aside>', '        <!-- related-posts:end -->'])
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -1220,9 +1353,7 @@ PAGE_TEMPLATE = """<!doctype html>
 {main}
     <a class="mobile-call" href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book online</a>
 
-    <footer>
-      <p>&copy; 2026 Hornsby Chiropractor. All rights reserved.</p>
-    </footer>
+{footer}
   </body>
 </html>
 """
@@ -1232,7 +1363,7 @@ MAIN_TEMPLATE = """<main class="post-page">
         <a class="post-back" href="/blog/">Back to blog</a>
         <h1>{title}</h1>
         <p class="post-meta"><time datetime="{date_iso}">{date_human}</time> · \
-<a href="/#about">Andy Lee, Chiropractor</a> · {category}</p>
+<a href="/about/">Andy Lee, Chiropractor</a> · {category}</p>
 {body_with_images}
 {related_html}
         <p class="post-disclaimer"><em>Disclaimer: this article is general information only, \
@@ -1245,16 +1376,17 @@ you read here.</em></p>
 
 CHROME_FALLBACK = """<header class="site-header">
       <a class="brand" href="/" aria-label="Hornsby Chiropractor home">
-        <img src="/assets/hornsby-logo-cropped.png" alt="Hornsby Chiropractor">
+        <img src="/assets/hornsby-logo-cropped.png" alt="Hornsby Chiropractor" width="660" height="253">
       </a>
       <nav aria-label="Primary navigation">
         <a href="/services/">Services</a>
-        <a href="/#about">About</a>
+        <a href="/about/">About</a>
         <a href="/#contact">Contact</a>
         <a href="/directions/">Directions</a>
         <a href="/blog/">Blog</a>
       </nav>
       <div class="header-actions">
+        <a class="lang-switch" href="/ko/" hreflang="ko" lang="ko" onclick="try{localStorage.setItem('siteLang','ko')}catch(e){}">한국어</a>
         <a class="header-book" href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book online</a>
       </div>
     </header>
@@ -1263,10 +1395,11 @@ CHROME_FALLBACK = """<header class="site-header">
       <summary aria-label="Open menu"><span></span><span></span><span></span></summary>
       <div class="mobile-menu-links">
         <a href="/services/">Services</a>
-        <a href="/#about">About</a>
+        <a href="/about/">About</a>
         <a href="/#contact">Contact</a>
         <a href="/directions/">Directions</a>
         <a href="/blog/">Blog</a>
+        <a class="mobile-lang-switch" href="/ko/" hreflang="ko" lang="ko" onclick="try{localStorage.setItem('siteLang','ko')}catch(e){}">한국어</a>
         <a href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book online</a>
       </div>
     </details>"""
@@ -1280,6 +1413,56 @@ def extract_chrome(template_path: Path) -> str:
         return CHROME_FALLBACK
     match = re.search(r"(<header class=\"site-header\">.*?)\s*(?=<main)", source, flags=re.DOTALL)
     return match.group(1).rstrip() if match else CHROME_FALLBACK
+
+
+FOOTER_FALLBACK = """    <footer>
+      <div class="footer-grid">
+        <div>
+          <p class="footer-title">Hornsby Chiropractor - Andy Lee</p>
+          <p>Suite 4, 43A Florence Street<br>Hornsby NSW 2077</p>
+          <p><a href="tel:+61402205435">0402 205 435</a></p>
+          <p><a href="mailto:hornsbychiroandy@gmail.com">hornsbychiroandy@gmail.com</a></p>
+        </div>
+        <div>
+          <p class="footer-title">Opening hours</p>
+          <p>Tuesday to Saturday, 9am to 7pm<br>Monday and Sunday closed<br>Appointments required</p>
+          <p>Consultations in English and Korean (<span lang="ko">한국어 진료</span>)</p>
+          <p><a href="https://pf.kakao.com/_xfkRxiX">KakaoTalk channel</a> for Korean enquiries</p>
+        </div>
+        <nav class="footer-links" aria-label="Care in Hornsby">
+          <p class="footer-title">Care in Hornsby</p>
+          <ul>
+            <li><a href="/services/disc-pain-treatment-hornsby/">Disc pain and sciatica</a></li>
+            <li><a href="/services/neck-pain-treatment-hornsby/">Neck pain</a></li>
+            <li><a href="/services/lower-back-pain-treatment-hornsby/">Lower back pain</a></li>
+            <li><a href="/services/headaches-treatment-hornsby/">Headaches</a></li>
+            <li><a href="/services/frozen-shoulder-treatment-hornsby/">Frozen shoulder</a></li>
+          </ul>
+        </nav>
+        <nav class="footer-links" aria-label="Clinic information">
+          <p class="footer-title">Clinic</p>
+          <ul>
+            <li><a href="/services/">All services</a></li>
+            <li><a href="/about/">About Andy Lee</a></li>
+            <li><a href="/directions/">Directions</a></li>
+            <li><a href="/blog/">Blog</a></li>
+            <li><a href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book online</a></li>
+            <li><a class="footer-lang" href="/ko/" hreflang="ko" lang="ko" onclick="try{localStorage.setItem('siteLang','ko')}catch(e){}">한국어</a></li>
+          </ul>
+        </nav>
+      </div>
+      <p class="footer-copy">&copy; 2026 Hornsby Chiropractor. All rights reserved.</p>
+    </footer>"""
+
+
+def extract_footer(template_path: Path) -> str:
+    """Copy the site footer verbatim from an existing post so every page matches."""
+    try:
+        source = template_path.read_text(encoding="utf-8")
+    except OSError:
+        return FOOTER_FALLBACK
+    match = re.search(r"[ \t]*<footer>.*?</footer>", source, flags=re.DOTALL)
+    return match.group(0) if match else FOOTER_FALLBACK
 
 
 def clamp_meta(text: str, limit: int, pad_to: int | None = None) -> str:
@@ -1319,9 +1502,10 @@ def build_blogposting_jsonld(article: dict, canonical: str, date_pub: str, og_im
         "inLanguage": "en-AU",
         "author": {
             "@type": "Person",
+            "@id": f"{SITE_DOMAIN}/about/#andy-lee",
             "name": "Andy Lee",
             "jobTitle": "Chiropractor",
-            "url": f"{SITE_DOMAIN}/#about",
+            "url": f"{SITE_DOMAIN}/about/",
         },
         "publisher": {
             "@type": "Organization",
@@ -1369,7 +1553,7 @@ def build_faq_jsonld(article: dict) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False)
 
 
-def write_post_page(article: dict, images: list[dict], chrome: str) -> Path:
+def write_post_page(article: dict, images: list[dict], chrome: str, footer: str | None = None) -> Path:
     slug = article["slug"]
     date_obj = datetime.now(SYDNEY_TZ)
     date_iso = date_obj.strftime("%Y-%m-%d")
@@ -1377,7 +1561,7 @@ def write_post_page(article: dict, images: list[dict], chrome: str) -> Path:
     canonical = f"{SITE_DOMAIN}/blog/{slug}/"
 
     first_img = next((im for im in images if im["ok"]), None)
-    og_image = f"{SITE_DOMAIN}{first_img['public_path']}" if first_img else f"{SITE_DOMAIN}/assets/hornsby-logo-cropped.png"
+    og_image = f"{SITE_DOMAIN}{first_img['public_path']}" if first_img else f"{SITE_DOMAIN}/assets/og-hornsby-chiropractor.jpg"
 
     seo_title = ensure_title_len(article["title"])
     meta_description = clamp_meta(article["meta_description"], 155)
@@ -1404,6 +1588,7 @@ def write_post_page(article: dict, images: list[dict], chrome: str) -> Path:
         faq_jsonld=build_faq_jsonld(article),
         chrome=chrome,
         main=main_html,
+        footer=footer or extract_footer(TEMPLATE_POST),
     )
 
     out_dir = BLOG_DIR / slug
@@ -1530,7 +1715,7 @@ def _sync_listing_sitemap(page_count: int, changed_urls: set[str]) -> None:
     if sitemap.exists():
         text = sitemap.read_text(encoding="utf-8")
     else:
-        urls = [f"{SITE_DOMAIN}{path}" for path in ("/", "/services/", "/directions/")]
+        urls = [f"{SITE_DOMAIN}{path}" for path in CORE_PAGES]
         urls.extend(item["canonical"] for item in extract_post_catalog())
         text = SITEMAP_HEADER + "".join(f"  <url><loc>{url}</loc></url>\n" for url in urls) + SITEMAP_FOOTER
     listing_pattern = re.compile(
@@ -1670,9 +1855,7 @@ def update_sitemap(slug: str) -> Path:
     else:
         # No sitemap yet: create one seeded with core pages plus the new post.
         pages = [
-            "/",
-            "/services/",
-            "/directions/",
+            *CORE_PAGES,
             "/blog/",
             f"/blog/{slug}/",
             "/blog/lumbar-disc-injury-management/",
@@ -1727,7 +1910,7 @@ def run_pipeline() -> tuple[str, str]:
     ok_count = sum(1 for i in images if i["ok"])
     log(f"Images: {ok_count}/{len(article['image_prompts'][:2])} generated illustrations.")
 
-    chrome = extract_chrome(BLOG_DIR / "lumbar-disc-injury-management" / "index.html")
+    chrome = extract_chrome(TEMPLATE_POST)
     post_path = write_post_page(article, images, chrome)
     related_updates = refresh_existing_related_posts()
     listing_path = prepend_blog_card(article)
@@ -1826,8 +2009,19 @@ def dry_run() -> int:
          "caption": "Original editorial illustration for Hornsby Chiropractor.",
          "width": 1536, "height": 1024, "n": 2},
     ]
-    chrome = extract_chrome(BLOG_DIR / "lumbar-disc-injury-management" / "index.html")
+    chrome = extract_chrome(TEMPLATE_POST)
     assert chrome.strip(), "Chrome extraction produced empty output"
+    assert matching_topic_clusters("sitting with a herniated disc at work")[0]["url"].endswith(
+        "/disc-pain-treatment-hornsby/"
+    ), "disc topics must map to the disc service page"
+    assert not matching_topic_clusters("relieve shin splints when running"), (
+        "topics outside the core clusters must not map to a service page"
+    )
+    focus = choose_focus_cluster()
+    assert focus in CORE_TOPIC_CLUSTERS, "focus cluster must be a core cluster"
+    hint_text, hint_urls = build_internal_link_hints("sciatica when getting out of bed")
+    assert "/services/disc-pain-treatment-hornsby/" in hint_urls, "disc page must be offered as a link"
+    assert "/about/" in hint_urls and "/#about" not in hint_text, "About page must replace the #about anchor"
 
     post_path = write_post_page(article, images, chrome)
     listing_path = prepend_blog_card(article)
@@ -1848,6 +2042,10 @@ def dry_run() -> int:
                 "site header copied": 'class="site-header"' in text,
                 "mobile menu copied": 'class="mobile-menu"' in text,
                 "footer present": "<footer>" in text,
+                "footer clinic address": "43A Florence Street" in text.split("<footer>", 1)[-1],
+                "byline links to About page": '<a href="/about/">Andy Lee, Chiropractor</a>' in text,
+                "author schema links to About page": '"url": "https://hornsbychiropractor.com/about/"' in text,
+                "logo has dimensions": 'hornsby-logo-cropped.png" alt="Hornsby Chiropractor" width=' in text,
                 "post-figure structure": '<figure class="post-figure">' in text,
                 "figcaption present": "<figcaption>" in text,
                 "illustration caption present": "Original editorial illustration" in text,

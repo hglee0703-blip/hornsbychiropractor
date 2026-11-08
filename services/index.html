@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-AU">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,12 +9,38 @@
       content="Disc-related neck and back pain are a central focus at Hornsby Chiropractor. Explore assessment and conservative care for severe pain and arm or leg symptoms."
     >
     <link rel="canonical" href="https://hornsbychiropractor.com/services/">
+    <link rel="alternate" hreflang="en-AU" href="https://hornsbychiropractor.com/services/">
+    <link rel="alternate" hreflang="ko" href="https://hornsbychiropractor.com/ko/services/">
+    <link rel="alternate" hreflang="x-default" href="https://hornsbychiropractor.com/services/">
+    <script>
+      (function () {
+        var saved = null;
+        try { saved = localStorage.getItem("siteLang"); } catch (e) {}
+        if (saved === "en") return;
+        var lang = ((navigator.languages && navigator.languages[0]) || navigator.language || "").toLowerCase();
+        if (saved !== "ko" && lang.indexOf("ko") !== 0) return;
+        var alt = document.querySelector('link[rel="alternate"][hreflang="ko"]');
+        if (alt) location.replace(new URL(alt.href).pathname + location.search + location.hash);
+      })();
+    </script>
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Disc pain and chiropractic care in Hornsby">
+    <meta property="og:description" content="Disc-related neck and back pain are a central focus at Hornsby Chiropractor. Explore assessment and conservative care for severe pain and arm or leg symptoms.">
+    <meta property="og:url" content="https://hornsbychiropractor.com/services/">
+    <meta property="og:image" content="https://hornsbychiropractor.com/assets/og-hornsby-chiropractor.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="Hornsby Chiropractor">
+    <meta property="og:locale" content="en_AU">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Disc pain and chiropractic care in Hornsby">
+    <meta name="twitter:description" content="Disc-related neck and back pain are a central focus at Hornsby Chiropractor. Explore assessment and conservative care for severe pain and arm or leg symptoms.">
+    <meta name="twitter:image" content="https://hornsbychiropractor.com/assets/og-hornsby-chiropractor.jpg">
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
         "@graph": [
           {
-            "@context": "https://schema.org",
             "@type": "MedicalBusiness",
             "@id": "https://hornsbychiropractor.com/#clinic",
             "name": "Hornsby Chiropractor",
@@ -22,13 +48,20 @@
               "Hornsby Chiropractor - Andy Lee",
               "Hornsby Chiropractor - Dr Andy H.G. Lee"
             ],
-            "description": "Chiropractic clinic in Hornsby providing individual assessment and discussion of care options for pain and movement concerns.",
+            "description": "Chiropractic clinic in Hornsby providing individual assessment and discussion of care options for disc-related neck and back pain, sciatica, neck pain, lower back pain, headaches and shoulder pain. Consultations in English and Korean.",
             "url": "https://hornsbychiropractor.com/",
             "logo": "https://hornsbychiropractor.com/assets/hornsby-logo-cropped.png",
-            "image": "https://hornsbychiropractor.com/assets/hero-treatment-wide.jpg",
+            "image": [
+              "https://hornsbychiropractor.com/assets/hero-treatment-wide.jpg",
+              "https://hornsbychiropractor.com/assets/treatment-room-bw.jpg"
+            ],
             "telephone": "+61 402 205 435",
             "email": "hornsbychiroandy@gmail.com",
             "hasMap": "https://www.google.com/maps/place/Hornsby+Chiropractor+-+Dr+Andy+H.G.+Lee/data=!4m2!3m1!1s0x0:0xe2aad09862500d87",
+            "sameAs": [
+              "https://maps.google.com/?cid=16333096351515544967",
+              "https://pf.kakao.com/_xfkRxiX"
+            ],
             "address": {
               "@type": "PostalAddress",
               "streetAddress": "Suite 4, 43A Florence Street",
@@ -36,6 +69,72 @@
               "addressRegion": "NSW",
               "postalCode": "2077",
               "addressCountry": "AU"
+            },
+            "areaServed": [
+              {
+                "@type": "Place",
+                "name": "Hornsby NSW"
+              },
+              {
+                "@type": "Place",
+                "name": "Hornsby Heights NSW"
+              },
+              {
+                "@type": "Place",
+                "name": "Waitara NSW"
+              },
+              {
+                "@type": "Place",
+                "name": "Asquith NSW"
+              },
+              {
+                "@type": "Place",
+                "name": "Mount Colah NSW"
+              },
+              {
+                "@type": "Place",
+                "name": "Normanhurst NSW"
+              },
+              {
+                "@type": "Place",
+                "name": "Wahroonga NSW"
+              },
+              {
+                "@type": "Place",
+                "name": "Thornleigh NSW"
+              },
+              {
+                "@type": "Place",
+                "name": "Westleigh NSW"
+              }
+            ],
+            "knowsAbout": [
+              "Disc-related neck and lower back pain",
+              "Sciatica",
+              "Neck pain",
+              "Lower back pain",
+              "Headaches with neck symptoms",
+              "Frozen shoulder"
+            ],
+            "knowsLanguage": [
+              "en-AU",
+              "ko"
+            ],
+            "contactPoint": {
+              "@type": "ContactPoint",
+              "contactType": "appointments",
+              "telephone": "+61 402 205 435",
+              "email": "hornsbychiroandy@gmail.com",
+              "availableLanguage": [
+                "English",
+                "Korean"
+              ]
+            },
+            "founder": {
+              "@id": "https://hornsbychiropractor.com/about/#andy-lee"
+            },
+            "employee": {
+              "@id": "https://hornsbychiropractor.com/about/#andy-lee"
             },
             "openingHoursSpecification": {
               "@type": "OpeningHoursSpecification",
@@ -85,7 +184,7 @@
             "name": "Care for disc-related pain",
             "description": "Assessment and conservative treatment of disc-related neck and lower back pain are a central focus at Hornsby Chiropractor. Treatment suitability is assessed individually, including for severe pain and symptoms radiating into an arm or leg. Care must not delay necessary surgery or urgent medical care.",
             "serviceType": "Chiropractic care",
-            "url": "https://hornsbychiropractor.com/services/#disc-pain",
+            "url": "https://hornsbychiropractor.com/services/disc-pain-treatment-hornsby/",
             "provider": {
               "@id": "https://hornsbychiropractor.com/#clinic"
             }
@@ -107,7 +206,7 @@
             "name": "Care for neck pain and stiffness",
             "description": "Care for neck pain and stiffness starts with understanding your symptoms, relevant history and movement. We discuss suitable chiropractic treatment options, their expected benefits and risks, alternatives, and referral where appropriate.",
             "serviceType": "Chiropractic care",
-            "url": "https://hornsbychiropractor.com/services/#neck-pain",
+            "url": "https://hornsbychiropractor.com/services/neck-pain-treatment-hornsby/",
             "provider": {
               "@id": "https://hornsbychiropractor.com/#clinic"
             }
@@ -118,7 +217,7 @@
             "name": "Care for lower back pain",
             "description": "We consider your lower back symptoms, movement and daily activities, then discuss suitable treatment options and an individual care plan or referral where appropriate. Symptoms alone do not establish a diagnosis.",
             "serviceType": "Chiropractic care",
-            "url": "https://hornsbychiropractor.com/services/#lower-back-pain",
+            "url": "https://hornsbychiropractor.com/services/lower-back-pain-treatment-hornsby/",
             "provider": {
               "@id": "https://hornsbychiropractor.com/#clinic"
             }
@@ -129,7 +228,7 @@
             "name": "Headache and neck pain care",
             "description": "For headaches accompanied by neck or shoulder symptoms, we assess the pattern of symptoms and discuss whether chiropractic care or medical review is appropriate. Suitable treatment options depend on the assessment. A sudden, severe or unusual headache needs prompt medical assessment.",
             "serviceType": "Chiropractic care",
-            "url": "https://hornsbychiropractor.com/services/#headaches",
+            "url": "https://hornsbychiropractor.com/services/headaches-treatment-hornsby/",
             "provider": {
               "@id": "https://hornsbychiropractor.com/#clinic"
             }
@@ -140,7 +239,7 @@
             "name": "Shoulder pain and movement care",
             "description": "A consultation considers shoulder pain, stiffness and restricted movement, including concerns about frozen shoulder. We discuss the findings, suitable treatment options and referral if needed; different shoulder problems can need different care.",
             "serviceType": "Chiropractic care",
-            "url": "https://hornsbychiropractor.com/services/#frozen-shoulder",
+            "url": "https://hornsbychiropractor.com/services/frozen-shoulder-treatment-hornsby/",
             "provider": {
               "@id": "https://hornsbychiropractor.com/#clinic"
             }
@@ -156,16 +255,17 @@
   <body>
     <header class="site-header">
       <a class="brand" href="/" aria-label="Hornsby Chiropractor home">
-        <img src="/assets/hornsby-logo-cropped.png" alt="Hornsby Chiropractor">
+        <img src="/assets/hornsby-logo-cropped.png" alt="Hornsby Chiropractor" width="660" height="253">
       </a>
       <nav aria-label="Primary navigation">
         <a href="/services/">Services</a>
-        <a href="/#about">About</a>
+        <a href="/about/">About</a>
         <a href="/#contact">Contact</a>
         <a href="/directions/">Directions</a>
         <a href="/blog/">Blog</a>
       </nav>
       <div class="header-actions">
+        <a class="lang-switch" href="/ko/services/" hreflang="ko" lang="ko" onclick="try{localStorage.setItem('siteLang','ko')}catch(e){}">한국어</a>
         <a class="header-book" href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book online</a>
       </div>
     </header>
@@ -174,10 +274,11 @@
       <summary aria-label="Open menu"><span></span><span></span><span></span></summary>
       <div class="mobile-menu-links">
         <a href="/services/">Services</a>
-        <a href="/#about">About</a>
+        <a href="/about/">About</a>
         <a href="/#contact">Contact</a>
         <a href="/directions/">Directions</a>
         <a href="/blog/">Blog</a>
+        <a class="mobile-lang-switch" href="/ko/services/" hreflang="ko" lang="ko" onclick="try{localStorage.setItem('siteLang','ko')}catch(e){}">한국어</a>
         <a href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book online</a>
       </div>
     </details>
@@ -228,6 +329,9 @@
               has a role alongside your specialist's advice. Treatment must
               not delay necessary surgery or urgent medical care.
             </p>
+            <p>
+              <a href="/services/disc-pain-treatment-hornsby/">Read more about disc pain and sciatica care</a>
+            </p>
           </div>
         </article>
 
@@ -256,12 +360,17 @@
             <p class="eyebrow">Neck pain</p>
             <h2>Care for neck pain and stiffness</h2>
           </div>
-          <p>
-            Care for neck pain and stiffness starts with understanding your
-            symptoms, relevant history and movement. We discuss suitable
-            chiropractic treatment options, their expected benefits and risks,
-            alternatives, and referral where appropriate.
-          </p>
+          <div>
+            <p>
+              Care for neck pain and stiffness starts with understanding your
+              symptoms, relevant history and movement. We discuss suitable
+              chiropractic treatment options, their expected benefits and risks,
+              alternatives, and referral where appropriate.
+            </p>
+            <p>
+              <a href="/services/neck-pain-treatment-hornsby/">Read more about neck pain care</a>
+            </p>
+          </div>
         </article>
 
         <article id="lower-back-pain" class="service-detail">
@@ -269,12 +378,17 @@
             <p class="eyebrow">Lower back pain</p>
             <h2>Care for lower back pain</h2>
           </div>
-          <p>
-            We consider your lower back symptoms, movement and daily activities,
-            then discuss suitable treatment options and an individual care plan
-            or referral where appropriate. Symptoms alone do not establish
-            a diagnosis.
-          </p>
+          <div>
+            <p>
+              We consider your lower back symptoms, movement and daily activities,
+              then discuss suitable treatment options and an individual care plan
+              or referral where appropriate. Symptoms alone do not establish
+              a diagnosis.
+            </p>
+            <p>
+              <a href="/services/lower-back-pain-treatment-hornsby/">Read more about lower back pain care</a>
+            </p>
+          </div>
         </article>
 
         <article id="headaches" class="service-detail">
@@ -282,13 +396,18 @@
             <p class="eyebrow">Headaches</p>
             <h2>Headache and neck pain care</h2>
           </div>
-          <p>
-            For headaches accompanied by neck or shoulder symptoms, we assess
-            the pattern of symptoms and discuss whether chiropractic care or
-            medical review is appropriate. Suitable treatment options depend
-            on the assessment. A sudden, severe or unusual headache needs
-            prompt medical assessment.
-          </p>
+          <div>
+            <p>
+              For headaches accompanied by neck or shoulder symptoms, we assess
+              the pattern of symptoms and discuss whether chiropractic care or
+              medical review is appropriate. Suitable treatment options depend
+              on the assessment. A sudden, severe or unusual headache needs
+              prompt medical assessment.
+            </p>
+            <p>
+              <a href="/services/headaches-treatment-hornsby/">Read more about headache care</a>
+            </p>
+          </div>
         </article>
 
         <article id="frozen-shoulder" class="service-detail">
@@ -296,12 +415,17 @@
             <p class="eyebrow">Shoulder pain</p>
             <h2>Shoulder pain and movement care</h2>
           </div>
-          <p>
-            A consultation considers shoulder pain, stiffness and restricted
-            movement, including concerns about frozen shoulder. We discuss the
-            findings, suitable treatment options and referral if needed;
-            different shoulder problems can need different care.
-          </p>
+          <div>
+            <p>
+              A consultation considers shoulder pain, stiffness and restricted
+              movement, including concerns about frozen shoulder. We discuss the
+              findings, suitable treatment options and referral if needed;
+              different shoulder problems can need different care.
+            </p>
+            <p>
+              <a href="/services/frozen-shoulder-treatment-hornsby/">Read more about frozen shoulder care</a>
+            </p>
+          </div>
         </article>
       </section>
       <section class="services-hero" aria-labelledby="assessment">
@@ -334,7 +458,7 @@
           Suite 4, 43A Florence Street, Hornsby NSW 2077<br>
           Phone: <a href="tel:+61402205435">0402 205 435</a><br>
           Tuesday to Saturday, 9am to 7pm. Monday and Sunday closed.
-          Appointments required.
+          Appointments required. Consultations in English and Korean.
         </p>
         <p>
           <a href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book an appointment online</a>
@@ -346,7 +470,42 @@
     <a class="mobile-call" href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book online</a>
 
     <footer>
-      <p>&copy; 2026 Hornsby Chiropractor. All rights reserved.</p>
+      <div class="footer-grid">
+        <div>
+          <p class="footer-title">Hornsby Chiropractor - Andy Lee</p>
+          <p>Suite 4, 43A Florence Street<br>Hornsby NSW 2077</p>
+          <p><a href="tel:+61402205435">0402 205 435</a></p>
+          <p><a href="mailto:hornsbychiroandy@gmail.com">hornsbychiroandy@gmail.com</a></p>
+        </div>
+        <div>
+          <p class="footer-title">Opening hours</p>
+          <p>Tuesday to Saturday, 9am to 7pm<br>Monday and Sunday closed<br>Appointments required</p>
+          <p>Consultations in English and Korean (<span lang="ko">한국어 진료</span>)</p>
+          <p><a href="https://pf.kakao.com/_xfkRxiX">KakaoTalk channel</a> for Korean enquiries</p>
+        </div>
+        <nav class="footer-links" aria-label="Care in Hornsby">
+          <p class="footer-title">Care in Hornsby</p>
+          <ul>
+            <li><a href="/services/disc-pain-treatment-hornsby/">Disc pain and sciatica</a></li>
+            <li><a href="/services/neck-pain-treatment-hornsby/">Neck pain</a></li>
+            <li><a href="/services/lower-back-pain-treatment-hornsby/">Lower back pain</a></li>
+            <li><a href="/services/headaches-treatment-hornsby/">Headaches</a></li>
+            <li><a href="/services/frozen-shoulder-treatment-hornsby/">Frozen shoulder</a></li>
+          </ul>
+        </nav>
+        <nav class="footer-links" aria-label="Clinic information">
+          <p class="footer-title">Clinic</p>
+          <ul>
+            <li><a href="/services/">All services</a></li>
+            <li><a href="/about/">About Andy Lee</a></li>
+            <li><a href="/directions/">Directions</a></li>
+            <li><a href="/blog/">Blog</a></li>
+            <li><a href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book online</a></li>
+            <li><a class="footer-lang" href="/ko/" hreflang="ko" lang="ko" onclick="try{localStorage.setItem('siteLang','ko')}catch(e){}">한국어</a></li>
+          </ul>
+        </nav>
+      </div>
+      <p class="footer-copy">&copy; 2026 Hornsby Chiropractor. All rights reserved.</p>
     </footer>
   </body>
 </html>
