@@ -188,10 +188,45 @@ CORE_TOPIC_CLUSTERS = (
         "label": "Chiropractic care in Hornsby",
         "weight": 1,
     },
+    {
+        "name": "Hip pain",
+        "brief": "hip pain lying on the side, walking, sitting, climbing stairs, and tight hip flexors",
+        "keywords": ("hip", "hips", "hip flexor", "hip flexors", "trochanteric"),
+        "url": "/services/",
+        "label": "Chiropractic care in Hornsby",
+        "weight": 1,
+    },
+    {
+        "name": "Elbow pain",
+        "brief": "tennis elbow, golfer's elbow and elbow pain with gripping, lifting, sport and work",
+        "keywords": ("elbow", "elbows", "golfer", "golfers", "epicondylitis", "epicondylalgia"),
+        "url": "/services/",
+        "label": "Chiropractic care in Hornsby",
+        "weight": 1,
+    },
+    {
+        "name": "Wrist and hand pain",
+        "brief": (
+            "wrist and forearm pain, De Quervain's tenosynovitis (thumb-side wrist pain), and pain "
+            "with computer, phone, lifting or baby-care tasks"
+        ),
+        "keywords": ("wrist", "wrists", "forearm", "forearms", "quervain", "thumb", "thumbs", "carpal"),
+        "url": "/services/",
+        "label": "Chiropractic care in Hornsby",
+        "weight": 1,
+    },
+    {
+        "name": "Foot and heel pain",
+        "brief": "plantar fasciitis and heel or arch pain with walking, standing, work shoes and running",
+        "keywords": ("plantar", "heel", "heels", "fasciitis", "foot", "feet"),
+        "url": "/services/",
+        "label": "Chiropractic care in Hornsby",
+        "weight": 1,
+    },
 )
-# Topic rotation looks at this many recent posts, so every cluster keeps coming round
-# instead of one cluster filling the queue until its all-time total catches up.
-FOCUS_WINDOW = 10
+# Topic rotation looks at this many recent posts (about one full weighted cycle), so every
+# cluster keeps coming round instead of one cluster filling the queue.
+FOCUS_WINDOW = 14
 
 # ---------------------------------------------------------------------------
 # Small helpers
@@ -473,15 +508,16 @@ a chiropractic clinic in Hornsby, NSW, Australia (author: Andy Lee).
 
 The clinic's central focus is disc-related neck and lower back pain, sciatica and pain \
 that travels into an arm or leg. It also sees neck pain, lower back pain, headaches with \
-neck or shoulder symptoms, shoulder pain including frozen shoulder, and knee pain.
+neck or shoulder symptoms, shoulder pain including frozen shoulder, and pain in the knee, \
+hip, elbow (including tennis and golfer's elbow), wrist (including De Quervain's \
+tenosynovitis) and foot (including plantar fasciitis).
 
 Suggest ONE new blog post topic for local patients. Requirements:
 - A specific, long-tail question or how-to search phrase that a real patient would \
 type into Google (e.g. "sitting with a herniated disc at work", "sciatica pain when getting out of bed").
-- It MUST belong to the focus cluster named at the end of this brief. Stay within the \
-clinic's core areas: disc problems and sciatica, lower back, neck, neck-related headaches, \
-the shoulder and the knee. Do NOT choose topics centred on the foot, ankle, shin, hip, elbow, \
-wrist or hand, or general fitness topics without a clear link to these areas.
+- It MUST belong to the focus cluster named at the end of this brief, and centre on a \
+musculoskeletal pain or movement problem the clinic sees. Do NOT choose general fitness, \
+diet or wellness topics without a clear pain or movement focus.
 - It must NOT be substantially similar to any of the already-published topics listed below.
 - Vary the symptom, activity and search intent instead of producing another minor rewrite of a common topic.
 - Use "Hornsby" only for a genuinely local-intent topic, not as a keyword added to every title.
@@ -2046,9 +2082,16 @@ def dry_run() -> int:
     assert not matching_topic_clusters("relieve shin splints when running"), (
         "topics outside the core clusters must not map to a service page"
     )
-    assert matching_topic_clusters("knee pain walking downstairs")[0]["name"] == "Knee pain", (
-        "knee topics must map to the knee cluster"
-    )
+    for phrase, cluster_name in (
+        ("knee pain walking downstairs", "Knee pain"),
+        ("hip pain lying on side at night", "Hip pain"),
+        ("golfer's elbow from gardening", "Elbow pain"),
+        ("de quervain's thumb pain after lifting a baby", "Wrist and hand pain"),
+        ("plantar fasciitis heel pain in the morning", "Foot and heel pain"),
+    ):
+        assert matching_topic_clusters(phrase)[0]["name"] == cluster_name, (
+            f"'{phrase}' must map to the {cluster_name} cluster"
+        )
     focus = choose_focus_cluster()
     assert focus in CORE_TOPIC_CLUSTERS, "focus cluster must be a core cluster"
     latest_cluster = _post_cluster(extract_post_catalog()[0])
