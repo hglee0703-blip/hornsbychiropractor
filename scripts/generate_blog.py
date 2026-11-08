@@ -82,6 +82,8 @@ CORE_PAGES = (
     "/services/lower-back-pain-treatment-hornsby/",
     "/services/headaches-treatment-hornsby/",
     "/services/frozen-shoulder-treatment-hornsby/",
+    "/services/tennis-elbow-treatment-hornsby/",
+    "/services/plantar-fasciitis-treatment-hornsby/",
     "/about/",
     "/directions/",
     "/ko/",
@@ -91,6 +93,8 @@ CORE_PAGES = (
     "/ko/services/lower-back-pain-treatment-hornsby/",
     "/ko/services/headaches-treatment-hornsby/",
     "/ko/services/frozen-shoulder-treatment-hornsby/",
+    "/ko/services/tennis-elbow-treatment-hornsby/",
+    "/ko/services/plantar-fasciitis-treatment-hornsby/",
     "/ko/about/",
     "/ko/directions/",
 )
@@ -200,8 +204,8 @@ CORE_TOPIC_CLUSTERS = (
         "name": "Elbow pain",
         "brief": "tennis elbow, golfer's elbow and elbow pain with gripping, lifting, sport and work",
         "keywords": ("elbow", "elbows", "golfer", "golfers", "epicondylitis", "epicondylalgia"),
-        "url": "/services/",
-        "label": "Chiropractic care in Hornsby",
+        "url": "/services/tennis-elbow-treatment-hornsby/",
+        "label": "Tennis elbow and golfer's elbow care in Hornsby",
         "weight": 1,
     },
     {
@@ -219,8 +223,8 @@ CORE_TOPIC_CLUSTERS = (
         "name": "Foot and heel pain",
         "brief": "plantar fasciitis and heel or arch pain with walking, standing, work shoes and running",
         "keywords": ("plantar", "heel", "heels", "fasciitis", "foot", "feet"),
-        "url": "/services/",
-        "label": "Chiropractic care in Hornsby",
+        "url": "/services/plantar-fasciitis-treatment-hornsby/",
+        "label": "Plantar fasciitis and heel pain care in Hornsby",
         "weight": 1,
     },
 )
@@ -1500,6 +1504,8 @@ FOOTER_FALLBACK = """    <footer>
             <li><a href="/services/lower-back-pain-treatment-hornsby/">Lower back pain</a></li>
             <li><a href="/services/headaches-treatment-hornsby/">Headaches</a></li>
             <li><a href="/services/frozen-shoulder-treatment-hornsby/">Frozen shoulder</a></li>
+            <li><a href="/services/tennis-elbow-treatment-hornsby/">Tennis elbow</a></li>
+            <li><a href="/services/plantar-fasciitis-treatment-hornsby/">Plantar fasciitis</a></li>
           </ul>
         </nav>
         <nav class="footer-links" aria-label="Clinic information">
