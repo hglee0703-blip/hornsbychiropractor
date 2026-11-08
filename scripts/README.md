@@ -149,6 +149,10 @@ python -m unittest discover -s scripts -p test_blog_pagination.py -v
 글 수가 줄면 남는 번호 페이지와 사이트맵 항목도 정리합니다. Dry-run은 모든 목록 페이지와
 사이트맵을 원래 내용으로 복원합니다.
 
+소유자가 삭제한 글의 슬러그는 `generate_blog.py`의 `RETIRED_POST_SLUGS`에 보관합니다.
+자동 주제 선정에서 해당 글을 제외하고, 동일 슬러그로 다시 발행하려는 경우 이미지 생성과
+파일 작성 전에 중단합니다.
+
 실제 발행 로컬 테스트:
 
 ```bash

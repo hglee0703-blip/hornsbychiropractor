@@ -289,6 +289,51 @@ class BlogPaginationTests(unittest.TestCase):
         blog._restore_sitemap(self.root / "sitemap.xml")
         self.assertEqual(self.snapshot(), before)
 
+    def test_topic_selection_excludes_the_three_removed_articles(self):
+        expected_removed = {
+            "sciatica-treatment-options-hornsby",
+            "relieve-posture-tension",
+            "how-to-relieve-sciatica-pain-while-driving-commuting",
+        }
+        self.assertEqual(blog.RETIRED_POST_SLUGS, expected_removed)
+        self.assertNotIn("relieve-posture-tension-headaches", blog.RETIRED_POST_SLUGS)
+        with (
+            patch.object(blog, "TOPIC_INPUT", ""),
+            patch.object(blog, "choose_focus_cluster", return_value={"name": "Movement", "brief": "Everyday movement"}),
+            patch.object(blog, "openai_generate", return_value="Comfortable walking habits") as generate,
+            patch.object(blog, "log"),
+        ):
+            self.assertEqual(blog.pick_topic(["an-existing-post"]), ("Comfortable walking habits", True))
+        generate.assert_called_once()
+        prompt = generate.call_args.args[0]
+        self.assertIn("an-existing-post", prompt)
+        for slug in expected_removed:
+            self.assertIn(slug, prompt)
+
+    def test_removed_article_slugs_are_rejected_before_images_or_writes(self):
+        for slug in (
+            "sciatica-treatment-options-hornsby",
+            "relieve-posture-tension",
+            "how-to-relieve-sciatica-pain-while-driving-commuting",
+        ):
+            for generated_slug in (slug, slug.upper().replace("-", " ")):
+                with (
+                    self.subTest(slug=generated_slug),
+                    patch.object(blog, "pick_topic", return_value=("Proposed topic", True)),
+                    patch.object(blog, "generate_article", return_value={
+                        "slug": generated_slug, "title": "Proposed article", "html_body": "<p>Draft.</p>",
+                    }),
+                    patch.object(blog, "build_generated_images", side_effect=AssertionError("Images must not be generated")) as images,
+                    patch.object(blog, "extract_chrome") as chrome,
+                    patch.object(blog, "write_post_page") as write,
+                    patch.object(blog, "log"),
+                ):
+                    with self.assertRaisesRegex(ValueError, "removed"):
+                        blog.run_pipeline()
+                    images.assert_not_called()
+                    chrome.assert_not_called()
+                    write.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

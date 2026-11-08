@@ -65,6 +65,12 @@ DRY_RUN = "--dry-run" in sys.argv
 REFRESH_SEO = "--refresh-seo" in sys.argv
 PAGINATE = "--paginate" in sys.argv
 BLOG_PAGE_SIZE = 12
+# Owner-removed articles must not be selected again or republished at these URLs.
+RETIRED_POST_SLUGS = frozenset({
+    "sciatica-treatment-options-hornsby",
+    "relieve-posture-tension",
+    "how-to-relieve-sciatica-pain-while-driving-commuting",
+})
 # Existing post whose header and footer are copied onto newly generated posts.
 TEMPLATE_POST = REPO_ROOT / "blog" / "lumbar-disc-injury-management" / "index.html"
 # Static pages that must always be listed when a sitemap is created from scratch.
@@ -762,6 +768,8 @@ def pick_topic(existing_slugs: list[str]) -> tuple[str, bool]:
     prompt = (
         TOPIC_SYSTEM_PROMPT
         + "\n\nAlready published topics:\n" + existing_list
+        + "\n\nOwner-removed topics: do not recreate or substantially repeat these articles:\n"
+        + "\n".join(f"- {slug}" for slug in sorted(RETIRED_POST_SLUGS))
         + f"\n\nFocus cluster for this post: {cluster['name']} ({cluster['brief']})."
     )
     raw = openai_generate(prompt, max_output_tokens=256).strip().strip('"').strip()
@@ -1891,6 +1899,8 @@ def run_pipeline() -> tuple[str, str]:
 
     # Deduplicate slug against existing folders.
     base_slug = slugify(article["slug"] or article["title"])
+    if base_slug in RETIRED_POST_SLUGS:
+        raise ValueError(f"Cannot republish an owner-removed article: {base_slug}")
     slug = base_slug
     n = 2
     while slug == "page" or (slug in existing and (BLOG_DIR / slug).exists()):
