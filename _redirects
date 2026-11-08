@@ -11,5 +11,10 @@
 /case-review-frozen-shoulder/ /services/frozen-shoulder-treatment-hornsby/ 301
 /services/degenerative-disc-treatment-in-hornsby/ /services/disc-pain-treatment-hornsby/ 301
 
+# Owner-withdrawn blog posts now point to the relevant service pages.
+/blog/sciatica-treatment-options-hornsby/ /services/disc-pain-treatment-hornsby/ 301
+/blog/how-to-relieve-sciatica-pain-while-driving-commuting/ /services/disc-pain-treatment-hornsby/ 301
+/blog/relieve-posture-tension/ /services/headaches-treatment-hornsby/ 301
+
 # Legacy condition pages restored as real pages (no redirect needed):
 # /services/headaches-treatment-hornsby/ and /services/frozen-shoulder-treatment-hornsby/
