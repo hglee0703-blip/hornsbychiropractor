@@ -1499,3 +1499,40 @@ body.home-screen-prompt-open .whatsapp-float {
 .about-page .service-detail-list {
   padding-top: clamp(32px, 5vw, 56px);
 }
+
+.lang-switch {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 12px;
+  color: var(--navy);
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.lang-switch:hover {
+  border-color: #b8c7d0;
+}
+
+.hero-note {
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+:lang(ko) {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+:lang(ko) h1 {
+  font-size: clamp(2.1rem, 4.4vw, 3.9rem);
+  line-height: 1.18;
+}
+
+:lang(ko) .eyebrow {
+  letter-spacing: 0.04em;
+}

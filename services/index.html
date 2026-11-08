@@ -9,6 +9,20 @@
       content="Disc-related neck and back pain are a central focus at Hornsby Chiropractor. Explore assessment and conservative care for severe pain and arm or leg symptoms."
     >
     <link rel="canonical" href="https://hornsbychiropractor.com/services/">
+    <link rel="alternate" hreflang="en-AU" href="https://hornsbychiropractor.com/services/">
+    <link rel="alternate" hreflang="ko" href="https://hornsbychiropractor.com/ko/services/">
+    <link rel="alternate" hreflang="x-default" href="https://hornsbychiropractor.com/services/">
+    <script>
+      (function () {
+        var saved = null;
+        try { saved = localStorage.getItem("siteLang"); } catch (e) {}
+        if (saved === "en") return;
+        var lang = ((navigator.languages && navigator.languages[0]) || navigator.language || "").toLowerCase();
+        if (saved !== "ko" && lang.indexOf("ko") !== 0) return;
+        var alt = document.querySelector('link[rel="alternate"][hreflang="ko"]');
+        if (alt) location.replace(new URL(alt.href).pathname + location.search + location.hash);
+      })();
+    </script>
     <meta property="og:type" content="website">
     <meta property="og:title" content="Disc pain and chiropractic care in Hornsby">
     <meta property="og:description" content="Disc-related neck and back pain are a central focus at Hornsby Chiropractor. Explore assessment and conservative care for severe pain and arm or leg symptoms.">
@@ -34,7 +48,7 @@
               "Hornsby Chiropractor - Andy Lee",
               "Hornsby Chiropractor - Dr Andy H.G. Lee"
             ],
-            "description": "Chiropractic clinic in Hornsby providing individual assessment and discussion of care options for disc-related neck and back pain, sciatica, neck pain, lower back pain, headaches and shoulder pain.",
+            "description": "Chiropractic clinic in Hornsby providing individual assessment and discussion of care options for disc-related neck and back pain, sciatica, neck pain, lower back pain, headaches and shoulder pain. Consultations in English and Korean.",
             "url": "https://hornsbychiropractor.com/",
             "logo": "https://hornsbychiropractor.com/assets/hornsby-logo-cropped.png",
             "image": [
@@ -101,6 +115,20 @@
               "Headaches with neck symptoms",
               "Frozen shoulder"
             ],
+            "knowsLanguage": [
+              "en-AU",
+              "ko"
+            ],
+            "contactPoint": {
+              "@type": "ContactPoint",
+              "contactType": "appointments",
+              "telephone": "+61 402 205 435",
+              "email": "hornsbychiroandy@gmail.com",
+              "availableLanguage": [
+                "English",
+                "Korean"
+              ]
+            },
             "founder": {
               "@id": "https://hornsbychiropractor.com/about/#andy-lee"
             },
@@ -236,6 +264,7 @@
         <a href="/blog/">Blog</a>
       </nav>
       <div class="header-actions">
+        <a class="lang-switch" href="/ko/services/" hreflang="ko" lang="ko" onclick="try{localStorage.setItem('siteLang','ko')}catch(e){}">한국어</a>
         <a class="header-book" href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book online</a>
       </div>
     </header>
@@ -248,6 +277,7 @@
         <a href="/#contact">Contact</a>
         <a href="/directions/">Directions</a>
         <a href="/blog/">Blog</a>
+        <a class="mobile-lang-switch" href="/ko/services/" hreflang="ko" lang="ko" onclick="try{localStorage.setItem('siteLang','ko')}catch(e){}">한국어</a>
         <a href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book online</a>
       </div>
     </details>
@@ -427,7 +457,7 @@
           Suite 4, 43A Florence Street, Hornsby NSW 2077<br>
           Phone: <a href="tel:+61402205435">0402 205 435</a><br>
           Tuesday to Saturday, 9am to 7pm. Monday and Sunday closed.
-          Appointments required.
+          Appointments required. Consultations in English and Korean.
         </p>
         <p>
           <a href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book an appointment online</a>
@@ -449,6 +479,7 @@
         <div>
           <p class="footer-title">Opening hours</p>
           <p>Tuesday to Saturday, 9am to 7pm<br>Monday and Sunday closed<br>Appointments required</p>
+          <p>Consultations in English and Korean (<span lang="ko">한국어 진료</span>)</p>
         </div>
         <nav class="footer-links" aria-label="Care in Hornsby">
           <p class="footer-title">Care in Hornsby</p>
@@ -468,6 +499,7 @@
             <li><a href="/directions/">Directions</a></li>
             <li><a href="/blog/">Blog</a></li>
             <li><a href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book online</a></li>
+            <li><a class="footer-lang" href="/ko/" hreflang="ko" lang="ko" onclick="try{localStorage.setItem('siteLang','ko')}catch(e){}">한국어</a></li>
           </ul>
         </nav>
       </div>

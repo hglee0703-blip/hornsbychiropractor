@@ -78,6 +78,15 @@ CORE_PAGES = (
     "/services/frozen-shoulder-treatment-hornsby/",
     "/about/",
     "/directions/",
+    "/ko/",
+    "/ko/services/",
+    "/ko/services/disc-pain-treatment-hornsby/",
+    "/ko/services/neck-pain-treatment-hornsby/",
+    "/ko/services/lower-back-pain-treatment-hornsby/",
+    "/ko/services/headaches-treatment-hornsby/",
+    "/ko/services/frozen-shoulder-treatment-hornsby/",
+    "/ko/about/",
+    "/ko/directions/",
 )
 
 SYDNEY_TZ = ZoneInfo("Australia/Sydney")
@@ -1377,6 +1386,7 @@ CHROME_FALLBACK = """<header class="site-header">
         <a href="/blog/">Blog</a>
       </nav>
       <div class="header-actions">
+        <a class="lang-switch" href="/ko/" hreflang="ko" lang="ko" onclick="try{localStorage.setItem('siteLang','ko')}catch(e){}">한국어</a>
         <a class="header-book" href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book online</a>
       </div>
     </header>
@@ -1389,6 +1399,7 @@ CHROME_FALLBACK = """<header class="site-header">
         <a href="/#contact">Contact</a>
         <a href="/directions/">Directions</a>
         <a href="/blog/">Blog</a>
+        <a class="mobile-lang-switch" href="/ko/" hreflang="ko" lang="ko" onclick="try{localStorage.setItem('siteLang','ko')}catch(e){}">한국어</a>
         <a href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book online</a>
       </div>
     </details>"""
@@ -1415,6 +1426,7 @@ FOOTER_FALLBACK = """    <footer>
         <div>
           <p class="footer-title">Opening hours</p>
           <p>Tuesday to Saturday, 9am to 7pm<br>Monday and Sunday closed<br>Appointments required</p>
+          <p>Consultations in English and Korean (<span lang="ko">한국어 진료</span>)</p>
         </div>
         <nav class="footer-links" aria-label="Care in Hornsby">
           <p class="footer-title">Care in Hornsby</p>
@@ -1434,6 +1446,7 @@ FOOTER_FALLBACK = """    <footer>
             <li><a href="/directions/">Directions</a></li>
             <li><a href="/blog/">Blog</a></li>
             <li><a href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Book online</a></li>
+            <li><a class="footer-lang" href="/ko/" hreflang="ko" lang="ko" onclick="try{localStorage.setItem('siteLang','ko')}catch(e){}">한국어</a></li>
           </ul>
         </nav>
       </div>
