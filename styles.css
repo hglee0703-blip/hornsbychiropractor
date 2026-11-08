@@ -1536,3 +1536,12 @@ body.home-screen-prompt-open .whatsapp-float {
 :lang(ko) .eyebrow {
   letter-spacing: 0.04em;
 }
+
+.kakao-float {
+  color: #3c1e1e;
+  background: #fee500;
+}
+
+.kakao-float:hover {
+  background: #f2d900;
+}
