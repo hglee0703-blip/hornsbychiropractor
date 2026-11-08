@@ -180,7 +180,53 @@ CORE_TOPIC_CLUSTERS = (
         "label": "Frozen shoulder and shoulder pain care in Hornsby",
         "weight": 1,
     },
+    {
+        "name": "Knee pain",
+        "brief": "knee pain with stairs, walking, squatting, kneeling and returning to exercise",
+        "keywords": ("knee", "knees", "kneecap", "patellofemoral"),
+        "url": "/services/",
+        "label": "Chiropractic care in Hornsby",
+        "weight": 1,
+    },
+    {
+        "name": "Hip pain",
+        "brief": "hip pain lying on the side, walking, sitting, climbing stairs, and tight hip flexors",
+        "keywords": ("hip", "hips", "hip flexor", "hip flexors", "trochanteric"),
+        "url": "/services/",
+        "label": "Chiropractic care in Hornsby",
+        "weight": 1,
+    },
+    {
+        "name": "Elbow pain",
+        "brief": "tennis elbow, golfer's elbow and elbow pain with gripping, lifting, sport and work",
+        "keywords": ("elbow", "elbows", "golfer", "golfers", "epicondylitis", "epicondylalgia"),
+        "url": "/services/",
+        "label": "Chiropractic care in Hornsby",
+        "weight": 1,
+    },
+    {
+        "name": "Wrist and hand pain",
+        "brief": (
+            "wrist and forearm pain, De Quervain's tenosynovitis (thumb-side wrist pain), and pain "
+            "with computer, phone, lifting or baby-care tasks"
+        ),
+        "keywords": ("wrist", "wrists", "forearm", "forearms", "quervain", "thumb", "thumbs", "carpal"),
+        "url": "/services/",
+        "label": "Chiropractic care in Hornsby",
+        "weight": 1,
+    },
+    {
+        "name": "Foot and heel pain",
+        "brief": "plantar fasciitis and heel or arch pain with walking, standing, work shoes and running",
+        "keywords": ("plantar", "heel", "heels", "fasciitis", "foot", "feet"),
+        "url": "/services/",
+        "label": "Chiropractic care in Hornsby",
+        "weight": 1,
+    },
 )
+# Topic rotation looks at this many recent posts (about one full weighted cycle), so every
+# cluster keeps coming round instead of one cluster filling the queue.
+FOCUS_WINDOW = 14
 
 # ---------------------------------------------------------------------------
 # Small helpers
@@ -340,17 +386,25 @@ def matching_topic_clusters(text: str) -> list[dict]:
     ]
 
 
+def _post_cluster(item: dict) -> str | None:
+    matches = matching_topic_clusters(f"{item['slug']} {item['title']} {item.get('category', '')}")
+    return matches[0]["name"] if matches else None
+
+
 def choose_focus_cluster(catalog: list[dict] | None = None) -> dict:
-    """Pick the cluster that is most under-covered relative to its weight."""
-    counts = {cluster["name"]: 0 for cluster in CORE_TOPIC_CLUSTERS}
-    for item in extract_post_catalog() if catalog is None else catalog:
-        matches = matching_topic_clusters(f"{item['slug']} {item['title']} {item.get('category', '')}")
-        if matches:
-            counts[matches[0]["name"]] += 1
+    """Rotate through the clusters by weight, judged on the most recent posts.
+
+    The cluster used by the latest post is never chosen twice in a row, so even the
+    priority disc/sciatica cluster alternates with the clinic's other areas.
+    """
+    posts = extract_post_catalog() if catalog is None else catalog  # newest first
+    recent = [_post_cluster(item) for item in posts[:FOCUS_WINDOW]]
+    last = recent[0] if recent else None
+    candidates = [c for c in CORE_TOPIC_CLUSTERS if c["name"] != last] or list(CORE_TOPIC_CLUSTERS)
     return min(
-        CORE_TOPIC_CLUSTERS,
+        candidates,
         key=lambda cluster: (
-            counts[cluster["name"]] / cluster["weight"],
+            recent.count(cluster["name"]) / cluster["weight"],
             CORE_TOPIC_CLUSTERS.index(cluster),
         ),
     )
@@ -454,15 +508,16 @@ a chiropractic clinic in Hornsby, NSW, Australia (author: Andy Lee).
 
 The clinic's central focus is disc-related neck and lower back pain, sciatica and pain \
 that travels into an arm or leg. It also sees neck pain, lower back pain, headaches with \
-neck or shoulder symptoms, and shoulder pain including frozen shoulder.
+neck or shoulder symptoms, shoulder pain including frozen shoulder, and pain in the knee, \
+hip, elbow (including tennis and golfer's elbow), wrist (including De Quervain's \
+tenosynovitis) and foot (including plantar fasciitis).
 
 Suggest ONE new blog post topic for local patients. Requirements:
 - A specific, long-tail question or how-to search phrase that a real patient would \
 type into Google (e.g. "sitting with a herniated disc at work", "sciatica pain when getting out of bed").
-- It MUST belong to the focus cluster named at the end of this brief. Stay within the \
-clinic's core areas: disc problems and sciatica, lower back, neck, neck-related headaches \
-and the shoulder. Do NOT choose topics centred on the foot, ankle, shin, knee, hip, elbow, \
-wrist or hand, or general fitness topics without a clear link to these areas.
+- It MUST belong to the focus cluster named at the end of this brief, and centre on a \
+musculoskeletal pain or movement problem the clinic sees. Do NOT choose general fitness, \
+diet or wellness topics without a clear pain or movement focus.
 - It must NOT be substantially similar to any of the already-published topics listed below.
 - Vary the symptom, activity and search intent instead of producing another minor rewrite of a common topic.
 - Use "Hornsby" only for a genuinely local-intent topic, not as a keyword added to every title.
@@ -2027,8 +2082,24 @@ def dry_run() -> int:
     assert not matching_topic_clusters("relieve shin splints when running"), (
         "topics outside the core clusters must not map to a service page"
     )
+    for phrase, cluster_name in (
+        ("knee pain walking downstairs", "Knee pain"),
+        ("hip pain lying on side at night", "Hip pain"),
+        ("golfer's elbow from gardening", "Elbow pain"),
+        ("de quervain's thumb pain after lifting a baby", "Wrist and hand pain"),
+        ("plantar fasciitis heel pain in the morning", "Foot and heel pain"),
+    ):
+        assert matching_topic_clusters(phrase)[0]["name"] == cluster_name, (
+            f"'{phrase}' must map to the {cluster_name} cluster"
+        )
     focus = choose_focus_cluster()
     assert focus in CORE_TOPIC_CLUSTERS, "focus cluster must be a core cluster"
+    latest_cluster = _post_cluster(extract_post_catalog()[0])
+    assert focus["name"] != latest_cluster, "the latest post's cluster must not be chosen twice in a row"
+    disc_run = [{"slug": f"herniated-disc-{n}", "title": "Herniated disc tips", "category": ""} for n in range(3)]
+    assert choose_focus_cluster(disc_run)["name"] != CORE_TOPIC_CLUSTERS[0]["name"], (
+        "a run of disc posts must hand over to another cluster"
+    )
     hint_text, hint_urls = build_internal_link_hints("sciatica when getting out of bed")
     assert "/services/disc-pain-treatment-hornsby/" in hint_urls, "disc page must be offered as a link"
     assert "/about/" in hint_urls and "/#about" not in hint_text, "About page must replace the #about anchor"
