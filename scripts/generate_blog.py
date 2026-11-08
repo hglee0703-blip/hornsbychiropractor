@@ -180,7 +180,18 @@ CORE_TOPIC_CLUSTERS = (
         "label": "Frozen shoulder and shoulder pain care in Hornsby",
         "weight": 1,
     },
+    {
+        "name": "Knee pain",
+        "brief": "knee pain with stairs, walking, squatting, kneeling and returning to exercise",
+        "keywords": ("knee", "knees", "kneecap", "patellofemoral"),
+        "url": "/services/",
+        "label": "Chiropractic care in Hornsby",
+        "weight": 1,
+    },
 )
+# Topic rotation looks at this many recent posts, so every cluster keeps coming round
+# instead of one cluster filling the queue until its all-time total catches up.
+FOCUS_WINDOW = 10
 
 # ---------------------------------------------------------------------------
 # Small helpers
@@ -340,17 +351,25 @@ def matching_topic_clusters(text: str) -> list[dict]:
     ]
 
 
+def _post_cluster(item: dict) -> str | None:
+    matches = matching_topic_clusters(f"{item['slug']} {item['title']} {item.get('category', '')}")
+    return matches[0]["name"] if matches else None
+
+
 def choose_focus_cluster(catalog: list[dict] | None = None) -> dict:
-    """Pick the cluster that is most under-covered relative to its weight."""
-    counts = {cluster["name"]: 0 for cluster in CORE_TOPIC_CLUSTERS}
-    for item in extract_post_catalog() if catalog is None else catalog:
-        matches = matching_topic_clusters(f"{item['slug']} {item['title']} {item.get('category', '')}")
-        if matches:
-            counts[matches[0]["name"]] += 1
+    """Rotate through the clusters by weight, judged on the most recent posts.
+
+    The cluster used by the latest post is never chosen twice in a row, so even the
+    priority disc/sciatica cluster alternates with the clinic's other areas.
+    """
+    posts = extract_post_catalog() if catalog is None else catalog  # newest first
+    recent = [_post_cluster(item) for item in posts[:FOCUS_WINDOW]]
+    last = recent[0] if recent else None
+    candidates = [c for c in CORE_TOPIC_CLUSTERS if c["name"] != last] or list(CORE_TOPIC_CLUSTERS)
     return min(
-        CORE_TOPIC_CLUSTERS,
+        candidates,
         key=lambda cluster: (
-            counts[cluster["name"]] / cluster["weight"],
+            recent.count(cluster["name"]) / cluster["weight"],
             CORE_TOPIC_CLUSTERS.index(cluster),
         ),
     )
@@ -454,14 +473,14 @@ a chiropractic clinic in Hornsby, NSW, Australia (author: Andy Lee).
 
 The clinic's central focus is disc-related neck and lower back pain, sciatica and pain \
 that travels into an arm or leg. It also sees neck pain, lower back pain, headaches with \
-neck or shoulder symptoms, and shoulder pain including frozen shoulder.
+neck or shoulder symptoms, shoulder pain including frozen shoulder, and knee pain.
 
 Suggest ONE new blog post topic for local patients. Requirements:
 - A specific, long-tail question or how-to search phrase that a real patient would \
 type into Google (e.g. "sitting with a herniated disc at work", "sciatica pain when getting out of bed").
 - It MUST belong to the focus cluster named at the end of this brief. Stay within the \
-clinic's core areas: disc problems and sciatica, lower back, neck, neck-related headaches \
-and the shoulder. Do NOT choose topics centred on the foot, ankle, shin, knee, hip, elbow, \
+clinic's core areas: disc problems and sciatica, lower back, neck, neck-related headaches, \
+the shoulder and the knee. Do NOT choose topics centred on the foot, ankle, shin, hip, elbow, \
 wrist or hand, or general fitness topics without a clear link to these areas.
 - It must NOT be substantially similar to any of the already-published topics listed below.
 - Vary the symptom, activity and search intent instead of producing another minor rewrite of a common topic.
@@ -2027,8 +2046,17 @@ def dry_run() -> int:
     assert not matching_topic_clusters("relieve shin splints when running"), (
         "topics outside the core clusters must not map to a service page"
     )
+    assert matching_topic_clusters("knee pain walking downstairs")[0]["name"] == "Knee pain", (
+        "knee topics must map to the knee cluster"
+    )
     focus = choose_focus_cluster()
     assert focus in CORE_TOPIC_CLUSTERS, "focus cluster must be a core cluster"
+    latest_cluster = _post_cluster(extract_post_catalog()[0])
+    assert focus["name"] != latest_cluster, "the latest post's cluster must not be chosen twice in a row"
+    disc_run = [{"slug": f"herniated-disc-{n}", "title": "Herniated disc tips", "category": ""} for n in range(3)]
+    assert choose_focus_cluster(disc_run)["name"] != CORE_TOPIC_CLUSTERS[0]["name"], (
+        "a run of disc posts must hand over to another cluster"
+    )
     hint_text, hint_urls = build_internal_link_hints("sciatica when getting out of bed")
     assert "/services/disc-pain-treatment-hornsby/" in hint_urls, "disc page must be offered as a link"
     assert "/about/" in hint_urls and "/#about" not in hint_text, "About page must replace the #about anchor"
