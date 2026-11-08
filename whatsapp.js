@@ -1,5 +1,5 @@
 (() => {
-  if (document.querySelector(".whatsapp-float")) return;
+  if (document.querySelector(".whatsapp-float:not(.kakao-float)")) return;
 
   const link = document.createElement("a");
   link.className = "whatsapp-float";
