@@ -23,6 +23,10 @@ export default {
       return createBooking(request);
     }
 
+    if (url.pathname === "/api/waitlist" && request.method === "POST") {
+      return joinWaitlist(request, env);
+    }
+
     if (url.pathname.startsWith("/api/")) {
       return json({ message: "Not found." }, 404);
     }
@@ -157,6 +161,133 @@ async function createBooking(request) {
   }
 }
 
+// Today's waitlist: when no online times are left today, a patient can ask to be put on the clinic's
+// Aseschedule waitlist for a 30-minute appointment today. Uses the clinic API with the FSTER_API_KEY secret,
+// which needs the clinic_settings:read, patients:read, patients:write and waitlist:write permissions.
+async function joinWaitlist(request, env) {
+  try {
+    const requestUrl = new URL(request.url);
+    const origin = request.headers.get("origin");
+    if (origin && origin !== requestUrl.origin) {
+      return json({ message: "The waitlist request could not be accepted." }, 403);
+    }
+
+    const contentLength = Number(request.headers.get("content-length") || 0);
+    if (contentLength > MAX_BODY_BYTES) {
+      return json({ message: "The waitlist request is too large." }, 413);
+    }
+
+    const payload = await request.json();
+    const validation = validateContactDetails(payload, "Please agree to the waitlist consent before continuing.");
+    if (validation.message) return json({ message: validation.message }, 400);
+    if (validation.website) {
+      return json({ message: "The waitlist request could not be accepted." }, 400);
+    }
+
+    if (!env?.FSTER_API_KEY) {
+      console.error("Waitlist error", { name: "MissingApiKey" });
+      return json({ message: "The waitlist is not available right now. Please call or text the clinic." }, 503);
+    }
+
+    const today = dateInSydney();
+    const openTimes = await fetchAvailableTimes(today);
+    if (openTimes.length) {
+      return json(
+        { message: "Appointments are available today. Please choose a time instead.", timesAvailable: true },
+        409,
+      );
+    }
+
+    const businessId = await clinicBusinessId(env);
+    const patientId = await findOrCreatePatient(env, validation);
+
+    try {
+      await clinicApiRequest(env, "/api/integration?action=create_waitlist_entry", {
+        method: "POST",
+        body: JSON.stringify({
+          business_id: businessId,
+          patient_id: patientId,
+          appointment_type_id: ASESCHEDULE_APPOINTMENT_TYPE_ID,
+          date_from: today,
+          date_to: today,
+          expires_on: today,
+          duration_minutes: 30,
+          contact_consent: true,
+          notes: "Joined from the hornsbychiropractor.com booking section (no online times left today).",
+        }),
+      });
+    } catch (error) {
+      if (error instanceof AsescheduleError && error.status === 409 && error.data?.code === "waitlist_duplicate") {
+        return json({ success: true, alreadyListed: true, date: today });
+      }
+      throw error;
+    }
+
+    return json({ success: true, date: today }, 201);
+  } catch (error) {
+    console.error("Waitlist error", safeError(error), error?.data?.code || "", error?.data?.missing_scopes || "");
+    if (error instanceof SyntaxError) {
+      return json({ message: "The waitlist details were not valid." }, 400);
+    }
+    return json(
+      { message: "You could not be added to the waitlist. Please try again, or call or text the clinic." },
+      502,
+    );
+  }
+}
+
+let cachedBusinessId = "";
+
+async function clinicBusinessId(env) {
+  if (cachedBusinessId) return cachedBusinessId;
+  const settings = await clinicApiRequest(env, "/api/integration?resource=clinic_settings");
+  const businesses = Array.isArray(settings?.businesses) ? settings.businesses : [];
+  const business =
+    businesses.find((item) => String(item?.id) === ASESCHEDULE_BUSINESS_ID) ||
+    businesses.find((item) => Array.isArray(item?.practitioners) && item.practitioners.includes(ASESCHEDULE_PRACTITIONER)) ||
+    businesses[0];
+  if (!business?.id) throw new AsescheduleError(404, { error: "Clinic not found." });
+  cachedBusinessId = String(business.id);
+  return cachedBusinessId;
+}
+
+// Reuse an existing patient only when both the email and the mobile number match, so a typed-in email
+// alone never attaches someone to another person's record.
+async function findOrCreatePatient(env, details) {
+  const found = await clinicApiRequest(
+    env,
+    `/api/integration?resource=patients&email=${encodeURIComponent(details.email)}`,
+  );
+  const wanted = phoneDigits(details.phone);
+  const match = (Array.isArray(found?.patients) ? found.patients : []).find(
+    (patient) => patient && patient.archived !== true && phoneDigits(patient.phone) === wanted,
+  );
+  if (match?.id) return String(match.id);
+
+  const created = await clinicApiRequest(env, "/api/integration?action=create_patient", {
+    method: "POST",
+    body: JSON.stringify({
+      first_name: details.firstName,
+      last_name: details.lastName,
+      email: details.email,
+      phone: details.phone,
+    }),
+  });
+  if (!created?.result?.id) throw new AsescheduleError(502, { error: "The patient could not be created." });
+  return String(created.result.id);
+}
+
+function phoneDigits(value) {
+  return String(value || "").replace(/\D/g, "").slice(-9);
+}
+
+function clinicApiRequest(env, path, options = {}) {
+  return asescheduleRequest(path, {
+    ...options,
+    headers: { "x-fster-api-key": env.FSTER_API_KEY, ...(options.headers || {}) },
+  });
+}
+
 async function fetchAvailableTimes(date) {
   const data = await asescheduleRequest(aseschedulePath());
   const day = (data.days || []).find((entry) => entry.isoDate === date);
@@ -215,8 +346,16 @@ async function asescheduleRequest(path, options = {}) {
 }
 
 function validateBooking(payload) {
+  const startsAt = String(payload?.startsAt || "").trim();
+  if (!startsAt || Number.isNaN(new Date(startsAt).getTime())) {
+    return { message: "Please choose an available appointment time." };
+  }
+  const clean = validateContactDetails(payload, "Please agree to the booking consent before continuing.");
+  return clean.message ? clean : { startsAt, ...clean };
+}
+
+function validateContactDetails(payload, consentMessage) {
   const clean = {
-    startsAt: String(payload?.startsAt || "").trim(),
     firstName: cleanText(payload?.firstName, 80),
     lastName: cleanText(payload?.lastName, 80),
     email: String(payload?.email || "").trim().toLowerCase(),
@@ -225,15 +364,12 @@ function validateBooking(payload) {
     website: String(payload?.website || "").trim(),
   };
 
-  if (!clean.startsAt || Number.isNaN(new Date(clean.startsAt).getTime())) {
-    return { message: "Please choose an available appointment time." };
-  }
   if (!clean.firstName || !clean.lastName) return { message: "Please enter your first and last name." };
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean.email) || clean.email.length > 160) {
     return { message: "Please enter a valid email address." };
   }
   if (!/^[+()\d\s-]{8,30}$/.test(clean.phone)) return { message: "Please enter a valid mobile number." };
-  if (!clean.consent) return { message: "Please agree to the booking consent before continuing." };
+  if (!clean.consent) return { message: consentMessage };
   return clean;
 }
 

@@ -319,6 +319,49 @@
             <strong id="booking-success-time"></strong>
             <p>A confirmation will be sent using the details in Aseschedule.</p>
           </div>
+          <form id="waitlist-form" class="booking-form" hidden>
+            <p class="waitlist-intro">
+              Join today's waitlist for a 30-minute appointment. The clinic will contact you
+              if a time becomes available today.
+            </p>
+
+            <div class="booking-fields">
+              <label>
+                First name
+                <input name="firstName" autocomplete="given-name" maxlength="80" required>
+              </label>
+              <label>
+                Last name
+                <input name="lastName" autocomplete="family-name" maxlength="80" required>
+              </label>
+              <label>
+                Email
+                <input name="email" type="email" autocomplete="email" maxlength="160" required>
+              </label>
+              <label>
+                Mobile
+                <input name="phone" type="tel" autocomplete="tel" maxlength="30" required>
+              </label>
+            </div>
+
+            <label class="booking-consent">
+              <input name="consent" type="checkbox" required>
+              <span>I agree to my details being used to add me to today's waitlist and to be contacted if a time becomes available.</span>
+            </label>
+            <label class="booking-honeypot" aria-hidden="true">
+              Website
+              <input name="website" tabindex="-1" autocomplete="off">
+            </label>
+
+            <button class="button waitlist-submit" type="submit">Join today's waitlist</button>
+            <p id="waitlist-form-status" class="booking-form-status" role="status" aria-live="polite"></p>
+          </form>
+
+          <div id="waitlist-success" class="booking-success" hidden>
+            <span>You're on today's waitlist</span>
+            <strong id="waitlist-success-date"></strong>
+            <p id="waitlist-success-copy">The clinic will contact you if a 30-minute appointment becomes available today.</p>
+          </div>
         </div>
       </section>
 

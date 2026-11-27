@@ -1550,3 +1550,8 @@ body.home-screen-prompt-open .whatsapp-float {
     bottom: calc(150px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+.waitlist-intro {
+  margin: 0 0 18px;
+  color: var(--muted);
+}

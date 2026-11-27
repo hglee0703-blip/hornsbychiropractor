@@ -9,6 +9,11 @@
   const formStatus = document.querySelector("#booking-form-status");
   const successPanel = document.querySelector("#booking-success");
   const successTime = document.querySelector("#booking-success-time");
+  const waitlistForm = document.querySelector("#waitlist-form");
+  const waitlistStatus = document.querySelector("#waitlist-form-status");
+  const waitlistSuccess = document.querySelector("#waitlist-success");
+  const waitlistSuccessDate = document.querySelector("#waitlist-success-date");
+  const waitlistSuccessCopy = document.querySelector("#waitlist-success-copy");
 
   if (!timesContainer || !form) return;
 
@@ -21,6 +26,11 @@
         checking: "오늘 일정을 확인하는 중...",
         loadFailed: "예약 가능한 시간을 불러오지 못했습니다. 다시 시도해 주세요.",
         noSlots: '오늘은 온라인으로 예약 가능한 시간이 없습니다. <a href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">다른 날짜 확인하기</a>.',
+        joining: "등록 중...",
+        joinWaitlist: "오늘 대기 명단 등록",
+        waitlistFailed: "대기 명단에 등록하지 못했습니다. 다시 시도하시거나 클리닉에 전화 또는 문자 주세요.",
+        alreadyListed: "이미 오늘 대기 명단에 등록되어 있습니다. 자리가 나면 클리닉에서 연락드립니다.",
+        timesAvailable: "지금 예약 가능한 시간이 생겼습니다. 아래에서 시간을 선택하세요.",
         select: "시간을 선택하세요:",
         confirming: "확인 중...",
         creating: "시간을 확인하고 예약을 만드는 중...",
@@ -34,6 +44,11 @@
         checking: "Checking today's calendar...",
         loadFailed: "Available times could not be loaded. Please try again.",
         noSlots: 'There are no online appointments left today. <a href="https://aseschedule.com/book/10d766b5-81f6-43b1-9a09-0b7dc8404ce2/default/">Check another date</a>.',
+        joining: "Joining...",
+        joinWaitlist: "Join today's waitlist",
+        waitlistFailed: "You could not be added to the waitlist. Please try again, or call or text the clinic.",
+        alreadyListed: "You're already on today's waitlist. The clinic will contact you if a time becomes available.",
+        timesAvailable: "A time has just become available. Please choose one below.",
         select: "Select a time:",
         confirming: "Confirming...",
         creating: "Checking the time and creating your appointment...",
@@ -68,9 +83,16 @@
     refreshButton.classList.toggle("is-loading", isLoading);
   }
 
+  function hideWaitlist() {
+    if (waitlistForm) waitlistForm.hidden = true;
+    if (waitlistSuccess) waitlistSuccess.hidden = true;
+    if (waitlistStatus) waitlistStatus.textContent = "";
+  }
+
   function showTimes() {
     form.hidden = true;
     successPanel.hidden = true;
+    hideWaitlist();
     timesContainer.hidden = false;
     status.hidden = false;
     selectedStart = "";
@@ -110,6 +132,7 @@
 
       if (!data.slots.length) {
         status.innerHTML = text.noSlots;
+        if (waitlistForm) waitlistForm.hidden = false;
         return;
       }
 
@@ -173,6 +196,60 @@
       submitButton.textContent = text.confirm;
     }
   });
+
+  if (waitlistForm) {
+    waitlistForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!waitlistForm.reportValidity()) return;
+
+      const submitButton = waitlistForm.querySelector(".waitlist-submit");
+      const formData = new FormData(waitlistForm);
+      submitButton.disabled = true;
+      submitButton.textContent = text.joining;
+      waitlistStatus.textContent = "";
+
+      try {
+        const response = await fetch("/api/waitlist", {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            firstName: formData.get("firstName"),
+            lastName: formData.get("lastName"),
+            email: formData.get("email"),
+            phone: formData.get("phone"),
+            consent: formData.get("consent") === "on",
+            website: formData.get("website"),
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+
+        if (response.status === 409 && data.timesAvailable) {
+          await loadAvailability();
+          status.textContent = text.timesAvailable;
+          return;
+        }
+        if (!response.ok) {
+          throw new Error(isKorean ? text.waitlistFailed : data.message || text.waitlistFailed);
+        }
+
+        waitlistForm.hidden = true;
+        waitlistSuccess.hidden = false;
+        waitlistSuccessDate.textContent = data.date
+          ? dateFormatter.format(new Date(`${data.date}T12:00:00Z`))
+          : "";
+        if (data.alreadyListed) waitlistSuccessCopy.textContent = text.alreadyListed;
+        waitlistForm.reset();
+      } catch (error) {
+        waitlistStatus.textContent = error.message || text.waitlistFailed;
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = text.joinWaitlist;
+      }
+    });
+  }
 
   changeTimeButton.addEventListener("click", showTimes);
   refreshButton.addEventListener("click", loadAvailability);
