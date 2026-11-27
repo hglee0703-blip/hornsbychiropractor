@@ -1,1 +1,5 @@
-# No private API key is required for the public Aseschedule booking API.
+# The public Aseschedule booking API needs no key.
+# The waitlist (POST /api/waitlist) uses the clinic API key from Aseschedule Settings > API keys,
+# saved as the Cloudflare Worker secret FSTER_API_KEY. It needs these permissions:
+# clinic_settings:read, patients:read, patients:write, waitlist:write.
+FSTER_API_KEY=fster_live_xxxxxxxx_replace_me
